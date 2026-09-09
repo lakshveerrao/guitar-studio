@@ -14,6 +14,7 @@ import { ControllerPanel } from './components/ControllerPanel/ControllerPanel'
 import { attachKeyboard } from './input/KeyboardInput'
 import { GamepadInput } from './input/GamepadInput'
 import { HidInput } from './input/HidInput'
+import { startBridge } from './input/BridgeInput'
 import { GuitarController } from './input/GuitarController'
 import { ensureStudio } from './audio/Studio'
 
@@ -37,6 +38,8 @@ export default function App() {
     const detachKeys = attachKeyboard()
     GamepadInput.start()
     void HidInput.reconnectPermitted()
+    const bridgeParam = new URLSearchParams(location.search).get('bridge')
+    const stopBridge = import.meta.env.DEV && bridgeParam ? startBridge(bridgeParam.startsWith('ws') ? bridgeParam : undefined) : null
     // any first gesture anywhere also unlocks audio (autoplay policy)
     const unlock = () => {
       void ensureStudio()
@@ -46,6 +49,7 @@ export default function App() {
     return () => {
       detachKeys()
       GamepadInput.stop()
+      stopBridge?.()
       window.removeEventListener('pointerdown', unlock)
       window.removeEventListener('keydown', unlock)
     }

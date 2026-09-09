@@ -179,6 +179,14 @@ function isUuid(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s.trim())
 }
 
+/** Smallest signed difference between two angles in degrees, so roll near +-180 does not wrap. */
+export function angleDelta(a: number, centre: number): number {
+  let d = (a - centre) % 360
+  if (d > 180) d -= 360
+  if (d < -180) d += 360
+  return d
+}
+
 function toHex(b: Uint8Array): string {
   return Array.from(b.slice(0, 24), (x) => x.toString(16).padStart(2, '0')).join(' ') + (b.length > 24 ? ' …' : '')
 }
@@ -457,7 +465,7 @@ class AiroMoteDevice {
         }
       }
       if (st.bendEnabled) {
-        const roll = Math.abs(s.roll)
+        const roll = Math.abs(angleDelta(s.roll, st.leadRollCentre))
         const bend = roll < 20 ? 0 : Math.min(2, ((roll - 20) / 45) * 2)
         const q = Math.round(bend * 10) / 10
         if (q !== this.lastBend) {
@@ -481,10 +489,11 @@ class AiroMoteDevice {
    */
   private leadTracking(s: MotionSample, st: MotionSettings, now: number) {
     // continuous positions with light smoothing against sensor jitter
-    const pitchT = (s.pitch - st.leadPitchCentre) / st.leadPitchSpan + 0.5 // 0..1 across the range
-    const rollT = (s.roll - st.leadRollCentre) / st.leadRollSpan + 0.5
+    const pitchT = angleDelta(s.pitch, st.leadPitchCentre) / st.leadPitchSpan + 0.5 // 0..1 across the range
+    const rollT = angleDelta(s.roll, st.leadRollCentre) / st.leadRollSpan + 0.5
+    // centre of the travel = middle fret on the G string, so the calibrated rest pose is a natural playing position
     const fretTarget = Math.max(0, Math.min(st.leadMaxFret, pitchT * st.leadMaxFret))
-    const stringTarget = Math.max(0, Math.min(5, (1 - rollT) * 5))
+    const stringTarget = Math.max(0, Math.min(5, 3 - (rollT - 0.5) * 6))
     this.leadFretPos += (fretTarget - this.leadFretPos) * 0.35
     this.leadStringPos += (stringTarget - this.leadStringPos) * 0.35
     // hysteresis: only step when clearly past the halfway point
@@ -511,6 +520,17 @@ class AiroMoteDevice {
     const legato = st.legatoOnMove && ringing && sameString && now - this.lastStrumAt > 0
     InputManager.dispatch({ type: 'FRET_NOTE', string: str as StringIndex, fret, play: legato, velocity: 0.7 }, 'motion')
     this.update({ lead: { string: str, fret } })
+  }
+
+  /** Mark this slot as fed by an external source (dev bridge / simulator) instead of Web Bluetooth. */
+  attachExternal(name: string) {
+    this.update({ state: 'connected', name, error: null, protocol: 'airomote' })
+    this.manager.autoAssignRoles()
+  }
+
+  detachExternal() {
+    this.releaseHeld()
+    this.update({ state: 'disconnected', protocol: null })
   }
 
   /** Capture the current tilt and roll as the neutral hand position. */
