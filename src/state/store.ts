@@ -142,8 +142,8 @@ const initial: AppState = {
   motionError: null,
   motionSettingsVersion: 0,
   motionDevices: [
-    { state: 'disconnected', name: null, error: null, role: 'both', battery: null, protocol: null, lastRaw: null, packets: 0 },
-    { state: 'disconnected', name: null, error: null, role: 'fret', battery: null, protocol: null, lastRaw: null, packets: 0 },
+    { state: 'disconnected', name: null, error: null, role: 'both', battery: null, protocol: null, lastRaw: null, packets: 0, lead: null },
+    { state: 'disconnected', name: null, error: null, role: 'fret', battery: null, protocol: null, lastRaw: null, packets: 0, lead: null },
   ],
   hidState: 'disconnected',
   hidName: null,

@@ -1,5 +1,6 @@
 import { InputManager } from './InputManager'
 import { store } from '../state/store'
+import type { StringIndex } from '../types'
 
 /**
  * AiroMote ESP32 motion controllers over Web Bluetooth. Up to two devices.
@@ -34,6 +35,8 @@ const FLAG_BUTTON = 1 << 5
 
 export type MotionState = 'unsupported' | 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'error'
 export type MotionRole = 'both' | 'strum' | 'fret'
+/** What a dedicated fret-hand controller does: step through chords, or track the hand along the neck. */
+export type FretMode = 'chords' | 'lead'
 
 export interface MotionSample {
   gyro: { x: number; y: number; z: number } // deg/s
@@ -54,6 +57,13 @@ export interface MotionSettings {
   bendEnabled: boolean
   chordTwist: boolean
   buttonMute: boolean
+  fretMode: FretMode
+  leadMaxFret: number // highest fret reachable by tilting (5..22)
+  leadPitchSpan: number // degrees of tilt that cover the whole range
+  leadRollSpan: number // degrees of roll that cover the six strings
+  leadPitchCentre: number // calibrated neutral tilt
+  leadRollCentre: number // calibrated neutral roll
+  legatoOnMove: boolean // moving while a note rings plays hammer-on / pull-off
 }
 
 export interface MotionDeviceStatus {
@@ -65,6 +75,7 @@ export interface MotionDeviceStatus {
   protocol: BleProtocol
   lastRaw: string | null // hex of the latest notification when the protocol is not AiroMote
   packets: number
+  lead: { string: number; fret: number } | null // tracked neck position in lead mode
 }
 
 const SETTINGS_KEY = 'guitar-studio.airomote.settings.v2'
@@ -126,7 +137,7 @@ export function encodeMotionPacket(m: {
 }
 
 function loadSettings(): MotionSettings {
-  const def: MotionSettings = { acceptAllDevices: true, customServiceUuid: '', strumThreshold: 220, strumAxis: 'x', invertStrum: false, bendEnabled: true, chordTwist: true, buttonMute: true }
+  const def: MotionSettings = { acceptAllDevices: true, customServiceUuid: '', strumThreshold: 220, strumAxis: 'x', invertStrum: false, bendEnabled: true, chordTwist: true, buttonMute: true, fretMode: 'lead', leadMaxFret: 12, leadPitchSpan: 70, leadRollSpan: 60, leadPitchCentre: 0, leadRollCentre: 0, legatoOnMove: true }
   try {
     const raw = localStorage.getItem(SETTINGS_KEY)
     if (raw) return { ...def, ...(JSON.parse(raw) as Partial<MotionSettings>) }
@@ -162,7 +173,7 @@ type BluetoothLike = {
   requestDevice(opts: { filters?: Array<Record<string, unknown>>; acceptAllDevices?: boolean; optionalServices: string[] }): Promise<BluetoothDeviceLike>
 }
 
-const idle = (role: MotionRole): MotionDeviceStatus => ({ state: 'disconnected', name: null, error: null, role, battery: null, protocol: null, lastRaw: null, packets: 0 })
+const idle = (role: MotionRole): MotionDeviceStatus => ({ state: 'disconnected', name: null, error: null, role, battery: null, protocol: null, lastRaw: null, packets: 0, lead: null })
 
 function isUuid(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s.trim())
@@ -194,6 +205,10 @@ class AiroMoteDevice {
   private lastTwistAt = 0
   private buttonDown = false
   private lastBend = 0
+  private leadFret = -1
+  private leadString = -1
+  private leadFretPos = 0 // smoothed continuous fret position
+  private leadStringPos = 0
 
   constructor(slot: number, manager: AiroMoteInputImpl, role: MotionRole) {
     this.slot = slot
@@ -426,7 +441,9 @@ class AiroMoteDevice {
       }
     }
 
-    if (fretHand) {
+    if (fretHand && role === 'fret' && st.fretMode === 'lead') {
+      this.leadTracking(s, st, now)
+    } else if (fretHand) {
       if (st.chordTwist) {
         const yawAxis = st.strumAxis === 'z' ? 'y' : 'z'
         const yaw = s.gyro[yawAxis]
@@ -454,6 +471,54 @@ class AiroMoteDevice {
         InputManager.dispatch({ type: 'VIBRATO', on: s.button }, 'motion')
       }
     }
+  }
+
+  /**
+   * Lead mode: the controller IS the fret hand. Tilt forward/back walks the
+   * hand along the neck, wrist roll chooses the string. The chosen position is
+   * fretted (other strings muted) so the strum hand plays exactly that note;
+   * moving while the note still rings triggers a hammer-on or pull-off.
+   */
+  private leadTracking(s: MotionSample, st: MotionSettings, now: number) {
+    // continuous positions with light smoothing against sensor jitter
+    const pitchT = (s.pitch - st.leadPitchCentre) / st.leadPitchSpan + 0.5 // 0..1 across the range
+    const rollT = (s.roll - st.leadRollCentre) / st.leadRollSpan + 0.5
+    const fretTarget = Math.max(0, Math.min(st.leadMaxFret, pitchT * st.leadMaxFret))
+    const stringTarget = Math.max(0, Math.min(5, (1 - rollT) * 5))
+    this.leadFretPos += (fretTarget - this.leadFretPos) * 0.35
+    this.leadStringPos += (stringTarget - this.leadStringPos) * 0.35
+    // hysteresis: only step when clearly past the halfway point
+    let fret = this.leadFret < 0 ? Math.round(this.leadFretPos) : this.leadFret
+    if (this.leadFretPos > fret + 0.62) fret = Math.round(this.leadFretPos)
+    else if (this.leadFretPos < fret - 0.62) fret = Math.round(this.leadFretPos)
+    let str = this.leadString < 0 ? Math.round(this.leadStringPos) : this.leadString
+    if (this.leadStringPos > str + 0.6) str = Math.round(this.leadStringPos)
+    else if (this.leadStringPos < str - 0.6) str = Math.round(this.leadStringPos)
+    fret = Math.max(0, Math.min(st.leadMaxFret, fret))
+    str = Math.max(0, Math.min(5, str))
+    if (fret === this.leadFret && str === this.leadString) return
+
+    const prevString = this.leadString
+    const state = store.get()
+    const ringing = prevString >= 0 && state.ringing[prevString]
+    const sameString = prevString === str
+    this.leadFret = fret
+    this.leadString = str
+    // mute everything else so a strum only sounds the tracked note
+    for (let i = 0; i < 6; i++) {
+      if (i !== str && state.frets[i] !== -1) InputManager.dispatch({ type: 'FRET_NOTE', string: i as StringIndex, fret: -1, play: false }, 'motion')
+    }
+    const legato = st.legatoOnMove && ringing && sameString && now - this.lastStrumAt > 0
+    InputManager.dispatch({ type: 'FRET_NOTE', string: str as StringIndex, fret, play: legato, velocity: 0.7 }, 'motion')
+    this.update({ lead: { string: str, fret } })
+  }
+
+  /** Capture the current tilt and roll as the neutral hand position. */
+  calibrateLead() {
+    if (!this.last) return
+    this.manager.setSettings({ leadPitchCentre: this.last.pitch, leadRollCentre: this.last.roll })
+    this.leadFret = -1
+    this.leadString = -1
   }
 
   private releaseHeld() {

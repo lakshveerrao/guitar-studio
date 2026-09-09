@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AiroMoteInput, MAX_DEVICES, type MotionRole, type MotionSample, type MotionSettings } from '../../input/AiroMoteInput'
+import { STRING_LABELS, fretNoteName } from '../../music/tuning'
 import { HidInput, type HidSnapshot } from '../../input/HidInput'
 import { useStore } from '../../state/store'
 import { Section, Slider, Toggle } from '../ui/controls'
@@ -60,6 +61,8 @@ const ROLE_LABEL: Record<MotionRole, string> = { both: 'Strum + fret', strum: 'S
 
 function DeviceRow({ slot }: { slot: number }) {
   const status = useStore((s) => s.motionDevices[slot])
+  useStore((s) => s.motionSettingsVersion)
+  const fretMode = AiroMoteInput.currentSettings.fretMode
   const sample = useMotionSample(slot)
   const dev = AiroMoteInput.device(slot)
   const connected = status.state === 'connected'
@@ -115,6 +118,17 @@ function DeviceRow({ slot }: { slot: number }) {
           ))}
         </div>
       </div>
+      {status.role === 'fret' && fretMode === 'lead' && (
+        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+          <span className="label">Tracking</span>
+          <span className="mono text-sm font-bold text-accent">
+            {status.lead ? `${STRING_LABELS[status.lead.string]} string · ${status.lead.fret === 0 ? 'open' : `fret ${status.lead.fret}`} · ${fretNoteName(status.lead.string, status.lead.fret)}` : 'waiting for motion'}
+          </span>
+          <button className="btn sm ml-auto" onClick={() => dev.calibrateLead()} disabled={!connected}>
+            Set centre here
+          </button>
+        </div>
+      )}
       {connected && sample && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
           <Bar label="swing X" value={sample.gyro.x} max={600} unit="°/s" />
@@ -161,8 +175,37 @@ export function MotionPanel() {
       </div>
       <p className="text-[12px] text-ink-2 leading-relaxed">
         One controller does everything: swing to strum, roll the wrist to bend, twist to change chords, hold the button to palm mute. With two connected,
-        Controller 1 becomes the strum hand and Controller 2 the fret hand (bend, chord twist, button = vibrato). Roles can be changed above.
+        Controller 1 becomes the strum hand and Controller 2 the fret hand. Roles can be changed above.
       </p>
+      <div className="rounded-lg border border-line bg-[#0e1115] p-3 flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="label">Fret hand</span>
+          <div className="seg">
+            <button className={settings.fretMode === 'lead' ? 'active' : ''} onClick={() => set({ fretMode: 'lead' })}>
+              Lead · full motion
+            </button>
+            <button className={settings.fretMode === 'chords' ? 'active' : ''} onClick={() => set({ fretMode: 'chords' })}>
+              Chords · twist to change
+            </button>
+          </div>
+          <span className="text-[11px] text-ink-3">
+            {settings.fretMode === 'lead'
+              ? 'Tilt forward/back walks the hand along the neck, roll the wrist to pick the string, the strum hand sounds the note. Moving while it rings gives hammer-ons and pull-offs. Button = vibrato.'
+              : 'Quick twist changes chord, wrist roll bends, button = vibrato.'}
+          </span>
+        </div>
+        {settings.fretMode === 'lead' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-3">
+            <Slider label="Fret range" value={settings.leadMaxFret} min={5} max={22} onChange={(v) => set({ leadMaxFret: v })} format={(v) => `open … fret ${v}`} />
+            <Slider label="Tilt travel" value={settings.leadPitchSpan} min={30} max={120} step={5} onChange={(v) => set({ leadPitchSpan: v })} format={(v) => `${v}°`} />
+            <Slider label="Roll travel (strings)" value={settings.leadRollSpan} min={30} max={120} step={5} onChange={(v) => set({ leadRollSpan: v })} format={(v) => `${v}°`} />
+            <Toggle on={settings.legatoOnMove} onChange={(v) => set({ legatoOnMove: v })} label="Hammer-on / pull-off when moving while ringing" size="sm" />
+            <span className="text-[11px] text-ink-3 md:col-span-2">
+              Hold the fret controller in a comfortable middle position and press <b>Set centre here</b> on its row. Centre = fret {Math.round(settings.leadMaxFret / 2)}, G string.
+            </span>
+          </div>
+        )}
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 pt-2 border-t border-line">
         <Toggle on={settings.acceptAllDevices} onChange={(v) => set({ acceptAllDevices: v })} label="Show every Bluetooth device in the picker" size="sm" />
         <label className="flex items-center gap-2">
