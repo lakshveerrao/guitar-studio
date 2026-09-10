@@ -4,19 +4,12 @@ import type { PickupPosition } from '../../audio/GuitarEngine'
 
 /**
  * Static artwork for the body, pickguard, pickups, bridge and controls.
- * Pure SVG, memoised so string animation never re-renders it.
+ * Pure SVG, memoised so string animation never re-renders it. The pickups are
+ * tagged with `data-pickup`; the Guitar's pointer handlers turn a tap on one
+ * into a pickup change (the svg holds pointer capture, so a click here would
+ * never be delivered to a descendant).
  */
-export const GuitarBody = memo(function GuitarBody({
-  pickup,
-  onPickup,
-  volume,
-  tone,
-}: {
-  pickup: PickupPosition
-  onPickup: (p: PickupPosition) => void
-  volume: number
-  tone: number
-}) {
+export const GuitarBody = memo(function GuitarBody({ pickup, volume, tone }: { pickup: PickupPosition; volume: number; tone: number }) {
   const bodyPath =
     'M 1020 80 ' +
     'C 1030 52, 1120 26, 1230 38 ' +
@@ -140,9 +133,9 @@ export const GuitarBody = memo(function GuitarBody({
 
       {/* pickups: neck, middle, bridge (slanted) */}
       <g style={{ cursor: 'pointer' }}>
-        <g onClick={() => onPickup('neck')}>{pickupRect(1214, pickup === 'neck', 'neck')}</g>
-        <g onClick={() => onPickup('middle')}>{pickupRect(1300, pickup === 'middle', 'middle')}</g>
-        <g onClick={() => onPickup('bridge')}>{pickupRect(1380, pickup === 'bridge', 'bridge', -8)}</g>
+        <g data-pickup="neck">{pickupRect(1214, pickup === 'neck', 'neck')}</g>
+        <g data-pickup="middle">{pickupRect(1300, pickup === 'middle', 'middle')}</g>
+        <g data-pickup="bridge">{pickupRect(1380, pickup === 'bridge', 'bridge', -8)}</g>
       </g>
 
       {/* pickup selector switch */}

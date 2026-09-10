@@ -66,22 +66,32 @@ select.sel, input.inp { background: #0e1115; border: 1px solid var(--color-line-
 .tabbar button.active { color: var(--color-ink); border-bottom-color: var(--color-accent); }
 .kbd { display: inline-block; min-width: 22px; padding: 1px 6px; border-radius: 4px; background: #1b2028; border: 1px solid #343b46; border-bottom-width: 2px; font-family: var(--font-mono); font-size: 11px; text-align: center; color: #d0d6de; }
 
+/* ---- modal dialogs (native <dialog> in the top layer: focus trap, Esc and focus restore come from the browser) ---- */
+dialog.modal { position: fixed; inset: 0; width: auto; height: auto; max-width: none; max-height: none; margin: 0; padding: 1rem; border: 0; background: rgba(0,0,0,.6); color: inherit; align-items: center; justify-content: center; }
+dialog.modal[open] { display: flex; }
+dialog.modal::backdrop { background: transparent; }
+
+/* ---- guitar ---- */
+.string-ringing { filter: drop-shadow(0 0 2px rgba(255,255,255,.35)); }
+
 /* ---- stage scene ---- */
-@keyframes crowd-clap { from { transform: rotate(-18deg); } to { transform: rotate(14deg); } }
-@keyframes crowd-clap-r { from { transform: rotate(18deg); } to { transform: rotate(-14deg); } }
+/* arms are skewed about the shoulder line of their row, so one layer of arms sways in place for every person in it */
+@keyframes crowd-clap { from { transform: skewX(-14deg); } to { transform: skewX(12deg); } }
+@keyframes crowd-clap-r { from { transform: skewX(14deg); } to { transform: skewX(-12deg); } }
 @keyframes crowd-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 @keyframes spot-sway { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
 @keyframes lamp-glow { 0%, 100% { opacity: .18; } 50% { opacity: .36; } }
 @keyframes strum-down { 0% { transform: translateY(0); } 35% { transform: translateY(52px); } 100% { transform: translateY(0); } }
 @keyframes strum-up { 0% { transform: translateY(0); } 35% { transform: translateY(-52px); } 100% { transform: translateY(0); } }
-.crowd-person { animation: crowd-bob 1.2s ease-in-out infinite; transform-box: fill-box; }
-.crowd-arm { animation-name: crowd-clap; animation-timing-function: ease-in-out; animation-iteration-count: infinite; animation-direction: alternate; }
+.crowd-bob { animation: crowd-bob 1.2s ease-in-out infinite; will-change: transform; }
+.crowd-arm { animation-name: crowd-clap; animation-duration: .6s; animation-timing-function: ease-in-out; animation-iteration-count: infinite; animation-direction: alternate; }
 .crowd-arm-r { animation-name: crowd-clap-r; }
-.spot { animation: spot-sway 7s ease-in-out infinite; }
+.spot { animation: spot-sway 7s ease-in-out infinite; will-change: transform; }
 .spot-b { animation-duration: 9s; animation-direction: reverse; }
 .spot-c { animation-duration: 11s; }
 .lamp-glow { animation: lamp-glow 2.4s ease-in-out infinite; }
+.stage-paused .crowd-bob, .stage-paused .crowd-arm, .stage-paused .spot, .stage-paused .lamp-glow { animation-play-state: paused; }
 .strum-hand { transform-box: view-box; }
 .strum-down { animation: strum-down .26s cubic-bezier(.3,.7,.3,1); }
 .strum-up { animation: strum-up .26s cubic-bezier(.3,.7,.3,1); }
-@media (prefers-reduced-motion: reduce) { .crowd-person, .crowd-arm, .spot, .lamp-glow { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .crowd-bob, .crowd-arm, .spot, .lamp-glow { animation: none; } }

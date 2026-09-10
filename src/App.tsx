@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { store, useStore, type Tab } from './state/store'
 import { TopBar } from './components/Layout/TopBar'
 import { StatusBar } from './components/Layout/StatusBar'
@@ -17,6 +17,7 @@ import { HidInput } from './input/HidInput'
 import { startBridge } from './input/BridgeInput'
 import { GuitarController } from './input/GuitarController'
 import { ensureStudio } from './audio/Studio'
+import { AudioSystem } from './audio/AudioSystem'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'play', label: 'PLAY' },
@@ -31,6 +32,8 @@ const TABS: { id: Tab; label: string }[] = [
 export default function App() {
   const tab = useStore((s) => s.tab)
   const audioReady = useStore((s) => s.audioReady)
+  // the context exists but is not producing sound (iOS interruption, backgrounding, a suspended tab)
+  const [audioStalled, setAudioStalled] = useState(false)
 
   useEffect(() => {
     // make sure the controller singleton is constructed and wired
@@ -40,18 +43,30 @@ export default function App() {
     void HidInput.reconnectPermitted()
     const bridgeParam = new URLSearchParams(location.search).get('bridge')
     const stopBridge = import.meta.env.DEV && bridgeParam ? startBridge(bridgeParam.startsWith('ws') ? bridgeParam : undefined) : null
-    // any first gesture anywhere also unlocks audio (autoplay policy)
-    const unlock = () => {
-      void ensureStudio()
+    // Any gesture unlocks audio (autoplay policy) and, for the life of the page, brings it back
+    // whenever the context has left 'running' (iOS interruptions, backgrounding, screen lock).
+    const onGesture = () => {
+      const ctx = AudioSystem.context
+      if (!ctx || ctx.state !== 'running') void ensureStudio()
     }
-    window.addEventListener('pointerdown', unlock, { once: true })
-    window.addEventListener('keydown', unlock, { once: true })
+    // Returning to the tab: only resume an existing context; creating one here would be outside a gesture
+    // and would drop the Enable Audio gate while the context is still suspended.
+    const onVisible = () => {
+      const ctx = AudioSystem.context
+      if (!document.hidden && ctx && ctx.state !== 'running') void AudioSystem.unlock()
+    }
+    window.addEventListener('pointerdown', onGesture)
+    window.addEventListener('keydown', onGesture)
+    document.addEventListener('visibilitychange', onVisible)
+    const unsubAudio = AudioSystem.subscribe((running) => setAudioStalled(!!AudioSystem.context && !running))
     return () => {
       detachKeys()
       GamepadInput.stop()
       stopBridge?.()
-      window.removeEventListener('pointerdown', unlock)
-      window.removeEventListener('keydown', unlock)
+      window.removeEventListener('pointerdown', onGesture)
+      window.removeEventListener('keydown', onGesture)
+      document.removeEventListener('visibilitychange', onVisible)
+      unsubAudio()
     }
   }, [])
 
@@ -105,6 +120,15 @@ export default function App() {
           </div>
         </div>
       </main>
+      {audioReady && audioStalled && (
+        <button
+          type="button"
+          className="fixed bottom-3 left-1/2 -translate-x-1/2 z-30 btn h-9 px-4 !bg-warn/15 !border-warn/60 text-warn shadow-lg"
+          onClick={() => void AudioSystem.unlock()}
+        >
+          Audio paused — tap to resume
+        </button>
+      )}
       {!audioReady && <EnableAudioGate />}
       <HelpOverlay />
       <SettingsDialog />
