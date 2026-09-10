@@ -104,8 +104,7 @@ export function TopBar() {
           <button
             className={`btn h-8 ${anyConnected ? 'active' : ''}`}
             onClick={() => setMenuOpen((o) => !o)}
-            disabled={motionBusy || hidState === 'connecting'}
-            title="Connect or disconnect a controller"
+            title="Connect, cancel or disconnect a controller"
           >
             <span className={`led green ${anyConnected ? 'on' : ''}`} />
             <span>
@@ -119,30 +118,35 @@ export function TopBar() {
           </button>
           {menuOpen && (
             <div className="absolute right-0 top-9 z-40 panel p-1 w-64 shadow-2xl flex flex-col gap-0.5">
-              {motionDevices.map((d, i) => (
-                <button
-                  key={i}
-                  className="btn justify-start h-9 !bg-transparent !border-transparent hover:!bg-panel-2"
-                  onClick={() => {
-                    setMenuOpen(false)
-                    const dev = AiroMoteInput.device(i)
-                    if (d.state === 'connected') void dev.disconnect()
-                    else void dev.connect()
-                  }}
-                >
-                  <span className={`led green ${d.state === 'connected' ? 'on' : ''}`} />
-                  <span className="flex-1 text-left">
-                    AiroMote {i + 1}
-                    <span className="text-ink-3 font-normal"> · Bluetooth</span>
-                  </span>
-                  <span className="text-[10px] text-ink-2">{d.state === 'connected' ? 'Disconnect' : 'Connect'}</span>
-                </button>
-              ))}
+              {motionDevices.map((d, i) => {
+                const busy = d.state === 'connecting' || d.state === 'reconnecting'
+                // disconnect() is also the cancel path while a connect / reconnect is in flight
+                const live = d.state === 'connected' || busy
+                return (
+                  <button
+                    key={i}
+                    className="btn justify-start h-9 !bg-transparent !border-transparent hover:!bg-panel-2"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      const dev = AiroMoteInput.device(i)
+                      if (live) void dev.disconnect()
+                      else void dev.connect()
+                    }}
+                  >
+                    <span className={`led green ${d.state === 'connected' ? 'on' : ''}`} />
+                    <span className="flex-1 text-left">
+                      AiroMote {i + 1}
+                      <span className="text-ink-3 font-normal"> · Bluetooth</span>
+                    </span>
+                    <span className="text-[10px] text-ink-2">{d.state === 'connected' ? 'Disconnect' : busy ? 'Cancel' : 'Connect'}</span>
+                  </button>
+                )
+              })}
               <button
                 className="btn justify-start h-9 !bg-transparent !border-transparent hover:!bg-panel-2"
                 onClick={() => {
                   setMenuOpen(false)
-                  if (hidConnected) void HidInput.disconnect()
+                  if (hidConnected || hidState === 'connecting') void HidInput.disconnect()
                   else void HidInput.connect()
                 }}
               >
@@ -151,7 +155,7 @@ export function TopBar() {
                   HID controller
                   <span className="text-ink-3 font-normal"> · Bluetooth / USB</span>
                 </span>
-                <span className="text-[10px] text-ink-2">{hidConnected ? 'Disconnect' : 'Connect'}</span>
+                <span className="text-[10px] text-ink-2">{hidConnected ? 'Disconnect' : hidState === 'connecting' ? 'Cancel' : 'Connect'}</span>
               </button>
               <div className="border-t border-line my-0.5" />
               <button

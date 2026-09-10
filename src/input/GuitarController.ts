@@ -6,8 +6,9 @@ import { NUM_FRETS, NUM_STRINGS } from '../music/tuning'
 import type { Action, InputSource, NoteEvent, StringIndex, Technique } from '../types'
 import { Recorder } from './Recorder'
 import { RiffTrainer } from './RiffTrainer'
+import { LEGATO_WINDOW_SECONDS } from './constants'
 
-const LEGATO_WINDOW = 1.8 // seconds a string may ring and still accept hammer-on / pull-off
+const LEGATO_WINDOW = LEGATO_WINDOW_SECONDS // seconds a string may ring and still accept hammer-on / pull-off
 
 /**
  * The playing-state engine. Holds what is fretted on each string and turns
@@ -18,6 +19,10 @@ class GuitarControllerImpl {
   readonly recorder = new Recorder()
   readonly trainer = new RiffTrainer()
   private ringPoll: number | null = null
+  /** Set around the engine call for a dead thud so its NoteEvent is recognised as non-musical. */
+  private deadPluckPending = false
+  /** Per string: the sound currently on it is a dead thud, so it must not be hammered/pulled from. */
+  private deadRing: boolean[] = Array(NUM_STRINGS).fill(false)
 
   constructor() {
     InputManager.onAction((a, s) => this.handle(a, s))
@@ -52,23 +57,36 @@ class GuitarControllerImpl {
   }
 
   private onNote(e: NoteEvent) {
-    const stamps = store.get().pluckStamp.slice()
-    // schedule the visual pluck to line up with the audio time
+    if (this.deadPluckPending) {
+      // a dead thud on a muted string: animate the pluck, but it is not a note the trainer or looper should see
+      this.deadPluckPending = false
+      this.deadRing[e.string] = true
+      const dead: NoteEvent = { ...e, dead: true }
+      this.stampPluck(e, false)
+      this.recorder.onNote(dead)
+      this.trainer.onNote(dead)
+      return
+    }
+    this.deadRing[e.string] = false
+    this.stampPluck(e, true)
+    this.recorder.onNote(e)
+    this.trainer.onNote(e)
+  }
+
+  /** Mirror a pluck into the store, timed to the audio clock so the animation lines up. */
+  private stampPluck(e: NoteEvent, musical: boolean) {
     const delayMs = Math.max(0, (e.time - (this.studio?.ctx.currentTime ?? 0)) * 1000)
     const apply = () => {
-      stamps[e.string] = performance.now()
       store.set((st) => {
         const ringing = st.ringing.slice()
         ringing[e.string] = true
         const ps = st.pluckStamp.slice()
         ps[e.string] = performance.now()
-        return { ringing, pluckStamp: ps, lastNote: { string: e.string, fret: e.fret }, lastTechnique: e.technique }
+        return musical ? { ringing, pluckStamp: ps, lastNote: { string: e.string, fret: e.fret }, lastTechnique: e.technique } : { ringing, pluckStamp: ps }
       })
     }
     if (delayMs < 4) apply()
     else window.setTimeout(apply, delayMs)
-    this.recorder.onNote(e)
-    this.trainer.onNote(e)
   }
 
   /** Current fretting per string (-1 = muted) */
@@ -82,22 +100,19 @@ class GuitarControllerImpl {
     const st = store.get()
     switch (a.type) {
       case 'FRET_NOTE': {
-        const fret = Math.max(-1, Math.min(NUM_FRETS, a.fret))
+        const fret = Number.isFinite(a.fret) ? Math.max(-1, Math.min(NUM_FRETS, Math.round(a.fret))) : 0
         const frets = st.frets.slice()
-        const prevFret = frets[a.string]
         frets[a.string] = fret
         // keep the chord label only while the fingering still matches its definition
         const chord = st.chordId ? chordById(st.chordId) : undefined
         const stillChord = !!chord && chord.frets.every((f, i) => f === frets[i])
         store.set({ frets, selectedString: a.string, chordId: stillChord ? st.chordId : null })
         if (a.play !== false && fret >= 0 && g) {
-          let technique: Technique = 'pick'
           const ringingFret = g.ringingFret(a.string)
-          if (g.isRinging(a.string) && ringingFret >= 0 && ringingFret !== fret && this.ringAge(a.string) < LEGATO_WINDOW) {
-            technique = fret > ringingFret ? 'hammer' : 'pull'
-          } else if (prevFret === fret && g.isRinging(a.string)) {
-            technique = 'pick'
-          }
+          const legatoOk = g.isRinging(a.string) && !this.deadRing[a.string] && ringingFret >= 0 && ringingFret !== fret && this.ringAge(a.string) < LEGATO_WINDOW
+          // a legato-only request (motion fret hand) never re-picks: outside the window the fret just moves silently
+          if (!legatoOk && a.legatoOnly) break
+          const technique: Technique = legatoOk ? (fret > ringingFret ? 'hammer' : 'pull') : 'pick'
           g.playNote(a.string, fret, { velocity: a.velocity ?? 0.85, technique, palmMute: st.palmMute, chord: st.chordId ?? undefined })
         } else if (fret < 0 && g) {
           g.muteString(a.string)
@@ -112,8 +127,14 @@ class GuitarControllerImpl {
         store.set({ selectedString: a.string })
         const fret = st.frets[a.string]
         if (fret < 0) {
-          // muted string: a short dead thud, like hitting a damped string
-          g?.playNote(a.string, 0, { velocity: 0.35, technique: 'pick', palmMute: true })
+          // muted string: a short dead thud, like hitting a damped string. The engine still emits a
+          // NoteEvent for it, so flag it as dead for the listeners (trainer / looper ignore it).
+          this.deadPluckPending = true
+          try {
+            g?.playNote(a.string, 0, { velocity: 0.35, technique: 'pick', palmMute: true })
+          } finally {
+            this.deadPluckPending = false
+          }
           break
         }
         g?.playNote(a.string, fret, { velocity: a.velocity ?? 0.85, technique: 'pick', palmMute: st.palmMute, chord: st.chordId ?? undefined })

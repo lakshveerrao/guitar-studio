@@ -11,9 +11,14 @@ import type { StringIndex } from '../types'
  *   M (hold)       palm mute           B (hold)  bend +1 semitone
  *   V (hold)       vibrato             R         record
  *   , .            previous / next chord        X   mute all
- *   ?  or  H       keyboard help
+ *   ?  or  F1      keyboard help
+ *
+ * The fret row is matched on the physical key (KeyboardEvent.code) so Shift
+ * still lands on the same fret key (Shift+; produces ':' as e.key, which would
+ * otherwise never reach fret 20).
  */
 export const FRET_KEYS = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';']
+const FRET_CODES = ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon']
 
 function isTyping(e: KeyboardEvent): boolean {
   const t = e.target as HTMLElement | null
@@ -22,13 +27,26 @@ function isTyping(e: KeyboardEvent): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable
 }
 
+/** Lower-cased printable key; the shifted symbol on the ';' key maps back to it. */
+function normKey(e: KeyboardEvent): string {
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key
+  return k === ':' ? ';' : k
+}
+
+/** Index in the fret row, by physical key first and by printed key as a fallback (virtual keyboards). */
+function fretIndex(e: KeyboardEvent, key: string): number {
+  const byCode = e.code ? FRET_CODES.indexOf(e.code) : -1
+  return byCode >= 0 ? byCode : FRET_KEYS.indexOf(key)
+}
+
 export function attachKeyboard(): () => void {
+  // fret keys are held by their physical code, the hold keys (m / b / v) by name
   const held = new Set<string>()
 
   const onDown = (e: KeyboardEvent) => {
     if (isTyping(e)) return
     if (e.metaKey || e.ctrlKey || e.altKey) return
-    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key
+    const key = normKey(e)
     if (e.repeat && key !== 'ArrowDown' && key !== 'ArrowUp' && key !== ' ') return
     const st = store.get()
     const sel = st.selectedString as StringIndex
@@ -39,11 +57,14 @@ export function attachKeyboard(): () => void {
       e.preventDefault()
       return
     }
-    const fretIdx = FRET_KEYS.indexOf(key)
-    if (fretIdx >= 0 && !held.has(key)) {
-      held.add(key)
-      const fret = fretIdx + 1 + (e.shiftKey ? 10 : 0)
-      InputManager.dispatch({ type: 'FRET_NOTE', string: sel, fret, play: true, velocity: 0.85 }, 'keyboard')
+    const fretIdx = fretIndex(e, key)
+    if (fretIdx >= 0) {
+      const holdKey = `fret:${fretIdx}`
+      if (!held.has(holdKey)) {
+        held.add(holdKey)
+        const fret = fretIdx + 1 + (e.shiftKey ? 10 : 0)
+        InputManager.dispatch({ type: 'FRET_NOTE', string: sel, fret, play: true, velocity: 0.85 }, 'keyboard')
+      }
       e.preventDefault()
       return
     }
@@ -93,8 +114,10 @@ export function attachKeyboard(): () => void {
         InputManager.dispatch({ type: 'MUTE_ALL' }, 'keyboard')
         return
       case '?':
-      case 'h':
+      case 'F1':
+        // 'h' is fret 6, so the help lives on ? and F1 (the browser's own F1 help page is suppressed)
         store.set({ helpOpen: !store.get().helpOpen })
+        e.preventDefault()
         return
       case 'Escape':
         store.set({ helpOpen: false, settingsOpen: false })
@@ -110,11 +133,17 @@ export function attachKeyboard(): () => void {
     }
   }
 
+  // A key that is in `held` was pressed outside a text field, so its release is
+  // always delivered, even when focus has moved into a slider or input since.
   const onUp = (e: KeyboardEvent) => {
-    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key
+    const key = normKey(e)
+    const fretIdx = fretIndex(e, key)
+    if (fretIdx >= 0) {
+      held.delete(`fret:${fretIdx}`)
+      return
+    }
     if (!held.has(key)) return
     held.delete(key)
-    if (isTyping(e)) return
     switch (key) {
       case 'm':
         InputManager.dispatch({ type: 'PALM_MUTE', on: false }, 'keyboard')

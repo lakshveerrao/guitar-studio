@@ -81,13 +81,17 @@ function DeviceRow({ slot }: { slot: number }) {
         {status.protocol && <span className="mono text-[10px] px-1.5 py-0.5 rounded bg-panel-2 border border-line-2 text-ink-2">{status.protocol === 'airomote' ? 'AiroMote protocol' : status.protocol === 'uart' ? 'UART stream' : 'raw BLE'}</span>}
         {status.battery != null && <span className="mono text-[10px] text-ink-3">battery {status.battery}%</span>}
         <div className="ml-auto flex items-center gap-2">
-          {!connected ? (
-            <button className="btn !bg-accent-2 !border-accent text-white" onClick={() => void dev.connect()} disabled={busy || !supported}>
-              {busy ? 'Connecting…' : status.name ? 'Reconnect' : 'Connect'}
-            </button>
-          ) : (
+          {connected ? (
             <button className="btn" onClick={() => void dev.disconnect()}>
               Disconnect
+            </button>
+          ) : busy ? (
+            <button className="btn" onClick={() => void dev.disconnect()} title="Stop trying to connect">
+              {status.state === 'reconnecting' ? 'Cancel reconnect' : 'Cancel'}
+            </button>
+          ) : (
+            <button className="btn !bg-accent-2 !border-accent text-white" onClick={() => void dev.connect()} disabled={!supported}>
+              {status.name ? 'Reconnect' : 'Connect'}
             </button>
           )}
           <button className="btn" onClick={() => void dev.forget()} disabled={!status.name}>
@@ -118,15 +122,23 @@ function DeviceRow({ slot }: { slot: number }) {
           ))}
         </div>
       </div>
+      {connected && (
+        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+          <span className="label">Centre</span>
+          <span className="mono text-ink-2">
+            {status.centre ? `pitch ${status.centre.pitch.toFixed(0)}° · roll ${status.centre.roll.toFixed(0)}°` : 'capturing rest pose… hold still'}
+          </span>
+          <button className="btn sm ml-auto" onClick={() => dev.calibrateLead()} disabled={!sample} title="Use the current pose as the neutral position for bend and lead tracking">
+            Set centre here
+          </button>
+        </div>
+      )}
       {status.role === 'fret' && fretMode === 'lead' && (
         <div className="flex flex-wrap items-center gap-2 text-[11px]">
           <span className="label">Tracking</span>
           <span className="mono text-sm font-bold text-accent">
-            {status.lead ? `${STRING_LABELS[status.lead.string]} string · ${status.lead.fret === 0 ? 'open' : `fret ${status.lead.fret}`} · ${fretNoteName(status.lead.string, status.lead.fret)}` : 'waiting for motion'}
+            {status.lead ? `${STRING_LABELS[status.lead.string]} string · ${status.lead.fret === 0 ? 'open' : `fret ${status.lead.fret}`} · ${fretNoteName(status.lead.string, status.lead.fret)}` : connected && !status.centre ? 'waiting for centre' : 'waiting for motion'}
           </span>
-          <button className="btn sm ml-auto" onClick={() => dev.calibrateLead()} disabled={!connected}>
-            Set centre here
-          </button>
         </div>
       )}
       {connected && sample && (
@@ -201,7 +213,8 @@ export function MotionPanel() {
             <Slider label="Roll travel (strings)" value={settings.leadRollSpan} min={30} max={120} step={5} onChange={(v) => set({ leadRollSpan: v })} format={(v) => `${v}°`} />
             <Toggle on={settings.legatoOnMove} onChange={(v) => set({ legatoOnMove: v })} label="Hammer-on / pull-off when moving while ringing" size="sm" />
             <span className="text-[11px] text-ink-3 md:col-span-2">
-              Hold the fret controller in a comfortable middle position and press <b>Set centre here</b> on its row. Centre = fret {Math.round(settings.leadMaxFret / 2)}, G string.
+              The rest pose is captured automatically after connecting. To re-take it, hold the fret controller in a comfortable middle position and press <b>Set centre here</b> on its row. Centre = fret{' '}
+              {Math.round(settings.leadMaxFret / 2)}, G string.
             </span>
           </div>
         )}
@@ -258,13 +271,17 @@ export function HidPanel() {
       }
     >
       <div className="flex flex-wrap items-center gap-2">
-        {!connected ? (
-          <button className="btn h-10 px-5 !bg-accent-2 !border-accent text-white" onClick={() => void HidInput.connect()} disabled={busy || !supported}>
-            {busy ? 'Connecting…' : 'Connect HID Device'}
-          </button>
-        ) : (
+        {connected ? (
           <button className="btn h-10" onClick={() => void HidInput.disconnect()}>
             Disconnect
+          </button>
+        ) : busy ? (
+          <button className="btn h-10" onClick={() => void HidInput.disconnect()} title="Stop trying to connect">
+            Cancel
+          </button>
+        ) : (
+          <button className="btn h-10 px-5 !bg-accent-2 !border-accent text-white" onClick={() => void HidInput.connect()} disabled={!supported}>
+            Connect HID Device
           </button>
         )}
         <button className="btn h-10" onClick={() => void HidInput.forget()} disabled={!snap.name}>
