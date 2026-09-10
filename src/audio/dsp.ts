@@ -5,7 +5,9 @@ export type CurveKind = 'soft' | 'tube' | 'hard' | 'fuzz'
 const curveCache = new Map<string, Float32Array<ArrayBuffer>>()
 
 /**
- * Build a waveshaper transfer curve. `amount` is 0..1.
+ * Build a waveshaper transfer curve. `amount` is 0..1. Every curve maps 0 to
+ * 0, is monotonic, and has a small-signal gain >= 1 that grows with `amount`
+ * (more drive = louder and harder clipping, never quieter).
  */
 export function makeCurve(kind: CurveKind, amount: number, samples = 4097): Float32Array<ArrayBuffer> {
   const key = `${kind}:${amount.toFixed(3)}`
@@ -24,11 +26,15 @@ export function makeCurve(kind: CurveKind, amount: number, samples = 4097): Floa
         break
       }
       case 'tube': {
-        // asymmetric: positive half clips softer than negative half
+        // Asymmetric: a small input bias makes the positive half clip earlier
+        // than the negative half (even harmonics). The bias is kept inside the
+        // knee at every drive (bias*k <= 0.45) so the curve never turns into a
+        // rectifier, and the bias output is subtracted so y(0) = 0. The
+        // small-signal slope is k(1 - tanh^2(0.45a))/tanh(k) >= 1 and rises
+        // with drive; the DC of a clipped signal is removed downstream.
         const k = 1 + a * 22
-        const bias = 0.12 * a
-        const xx = x + bias
-        y = Math.tanh(xx * k) / Math.tanh(k) - Math.tanh(bias * k) / Math.tanh(k)
+        const bias = (0.45 * a) / k
+        y = (Math.tanh((x + bias) * k) - Math.tanh(bias * k)) / Math.tanh(k)
         break
       }
       case 'hard': {
@@ -40,9 +46,10 @@ export function makeCurve(kind: CurveKind, amount: number, samples = 4097): Floa
         break
       }
       case 'fuzz': {
+        // hyperbolic soft clipper normalised so x = +/-1 maps to exactly +/-1;
+        // odd, monotonic and |y| <= 1 for |x| <= 1, so no clamp is needed
         const k = 1 + a * 60
-        y = ((3 + k) * x * 20 * (Math.PI / 180)) / (Math.PI + k * Math.abs(x))
-        y = Math.max(-1, Math.min(1, y))
+        y = ((Math.PI + k) * x) / (Math.PI + k * Math.abs(x))
         break
       }
     }

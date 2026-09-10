@@ -46,6 +46,7 @@ export class AmpEngine {
   private cabLow: BiquadFilterNode
   private master: GainNode
   private params: AmpParams
+  private curveKey = ''
 
   constructor(ctx: AudioContext, initial: AmpParams) {
     this.ctx = ctx
@@ -115,7 +116,13 @@ export class AmpEngine {
     const k = 0.02
     const g = p.gain / 10
     const drive = Math.min(1, spec.drive + spec.driveRange * g)
-    this.shaper.curve = makeCurve(spec.curve, drive)
+    // Only swap the transfer curve when model or drive actually changed
+    // (every knob routes through apply); resolution 0.01.
+    const curveKey = `${spec.curve}:${drive.toFixed(2)}`
+    if (curveKey !== this.curveKey) {
+      this.curveKey = curveKey
+      this.shaper.curve = makeCurve(spec.curve, Number(drive.toFixed(2)))
+    }
     this.pre.gain.setTargetAtTime(spec.pre * (0.25 + g * 1.75), t, k)
     this.tight.frequency.setTargetAtTime(drive > 0.5 ? 110 : 70, t, k)
     // Loud curves compress the signal; trim so master stays comparable

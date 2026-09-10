@@ -5,6 +5,7 @@ import { EffectsChain } from './EffectsChain'
 import { Metronome } from './Metronome'
 import { DrumMachine } from './DrumMachine'
 import { Applause } from './Applause'
+import { Transport } from './Transport'
 import { DEFAULT_AMP, DEFAULT_EFFECTS } from './presets'
 
 /**
@@ -13,13 +14,15 @@ import { DEFAULT_AMP, DEFAULT_EFFECTS } from './presets'
  *   GuitarEngine -> [compressor -> overdrive -> distortion] -> AmpEngine
  *     -> [chorus -> delay -> reverb] -> master -> limiter -> analyser -> out
  *
- *   Metronome / DrumMachine -> master (they bypass the guitar chain)
+ *   Metronome / DrumMachine -> master (they bypass the guitar chain, and
+ *   share one Transport grid so click and beat stay aligned)
  */
 export class Studio {
   readonly ctx: AudioContext
   readonly guitar: GuitarEngine
   readonly amp: AmpEngine
   readonly effects: EffectsChain
+  readonly transport: Transport
   readonly metronome: Metronome
   readonly drums: DrumMachine
   readonly applause: Applause
@@ -53,8 +56,9 @@ export class Studio {
     this.limiter.connect(this.analyser)
     this.analyser.connect(ctx.destination)
 
-    this.metronome = new Metronome(ctx, this.master)
-    this.drums = new DrumMachine(ctx, this.master)
+    this.transport = new Transport(ctx)
+    this.metronome = new Metronome(ctx, this.master, this.transport)
+    this.drums = new DrumMachine(ctx, this.master, this.transport)
     this.applause = new Applause(ctx, this.master)
   }
 

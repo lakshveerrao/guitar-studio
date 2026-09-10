@@ -1,8 +1,19 @@
 import type { EffectsParams } from '../types'
-import { makeCurve, makeImpulseResponse } from './dsp'
+import { makeCurve, makeImpulseResponse, type CurveKind } from './dsp'
+
+/** Time constant of the bypass crossfade (~20 ms to settle). */
+const BYPASS_TAU = 0.007
 
 /**
- * A pedal with true bypass switching. Subclasses wire `wetIn -> ... -> wetOut`.
+ * A pedal with a click-free bypass. Subclasses wire `wetIn -> ... -> wetOut`.
+ *
+ *   input -> dryGain  -> output
+ *   input -> feedGain -> wetIn -> [effect] -> wetOut -> output
+ *
+ * Both paths are permanently connected; enabling crossfades dryGain and
+ * feedGain (equal time constants, so their sum stays 1). Disabling cuts the
+ * feed into the effect but leaves wetOut attached, so delay and reverb tails
+ * ring out instead of stopping dead.
  */
 abstract class Pedal {
   readonly input: GainNode
@@ -10,6 +21,8 @@ abstract class Pedal {
   protected wetIn: GainNode
   protected wetOut: GainNode
   protected ctx: AudioContext
+  private dryGain: GainNode
+  private feedGain: GainNode
   private enabled = false
 
   constructor(ctx: AudioContext) {
@@ -18,33 +31,23 @@ abstract class Pedal {
     this.output = ctx.createGain()
     this.wetIn = ctx.createGain()
     this.wetOut = ctx.createGain()
-    this.input.connect(this.output) // bypass by default; wetOut is attached on enable
+    this.dryGain = ctx.createGain()
+    this.dryGain.gain.value = 1
+    this.feedGain = ctx.createGain()
+    this.feedGain.gain.value = 0
+    this.input.connect(this.dryGain)
+    this.dryGain.connect(this.output)
+    this.input.connect(this.feedGain)
+    this.feedGain.connect(this.wetIn)
+    this.wetOut.connect(this.output)
   }
 
   setEnabled(on: boolean): void {
     if (on === this.enabled) return
     this.enabled = on
-    if (on) {
-      try {
-        this.input.disconnect(this.output)
-      } catch {
-        /* not connected */
-      }
-      this.input.connect(this.wetIn)
-      this.wetOut.connect(this.output)
-    } else {
-      try {
-        this.input.disconnect(this.wetIn)
-      } catch {
-        /* not connected */
-      }
-      try {
-        this.wetOut.disconnect(this.output)
-      } catch {
-        /* not connected */
-      }
-      this.input.connect(this.output)
-    }
+    const t = this.ctx.currentTime
+    this.dryGain.gain.setTargetAtTime(on ? 0 : 1, t, BYPASS_TAU)
+    this.feedGain.gain.setTargetAtTime(on ? 1 : 0, t, BYPASS_TAU)
   }
 
   get isEnabled(): boolean {
@@ -80,6 +83,7 @@ class DrivePedal extends Pedal {
   private tone: BiquadFilterNode
   private level: GainNode
   private kind: 'soft' | 'hard'
+  private curveKey = ''
   constructor(ctx: AudioContext, kind: 'soft' | 'hard') {
     super(ctx)
     this.kind = kind
@@ -99,7 +103,14 @@ class DrivePedal extends Pedal {
   set(p: { drive: number; tone: number; level: number }) {
     const t = this.ctx.currentTime
     const d = p.drive / 10
-    this.shaper.curve = makeCurve(this.kind === 'soft' ? 'tube' : 'fuzz', 0.15 + d * 0.85)
+    const curve: CurveKind = this.kind === 'soft' ? 'tube' : 'fuzz'
+    const amount = Number((0.15 + d * 0.85).toFixed(2))
+    const curveKey = `${curve}:${amount}`
+    if (curveKey !== this.curveKey) {
+      // only replace the transfer curve when the drive actually changed
+      this.curveKey = curveKey
+      this.shaper.curve = makeCurve(curve, amount)
+    }
     this.pre.gain.setTargetAtTime(1 + d * (this.kind === 'soft' ? 6 : 14), t, 0.02)
     this.tone.frequency.setTargetAtTime(700 * Math.pow(10, p.tone / 10), t, 0.02) // 700 Hz .. 7 kHz
     const comp = 1 / (1 + d * (this.kind === 'soft' ? 1.2 : 2.2))
@@ -189,30 +200,74 @@ class DelayPedal extends Pedal {
   }
 }
 
+/** Impulse responses kept per integer room size (each is up to 4 s stereo). */
+const IR_CACHE_SIZE = 4
+
+/**
+ * Convolution reverb with two alternating convolvers: a room change loads the
+ * new impulse response into the idle convolver and crossfades to it, so the
+ * old tail keeps decaying instead of being cut. IRs are cached per room so
+ * revisiting a value neither regenerates 4 s of noise nor changes character.
+ */
 class ReverbPedal extends Pedal {
-  private convolver: ConvolverNode
+  private convolvers: [ConvolverNode, ConvolverNode]
+  private convGains: [GainNode, GainNode]
+  private activeIdx = 0
   private wet: GainNode
   private dry: GainNode
   private lastRoom = -1
+  private irCache = new Map<number, AudioBuffer>()
   constructor(ctx: AudioContext) {
     super(ctx)
-    this.convolver = ctx.createConvolver()
     this.wet = ctx.createGain()
     this.dry = ctx.createGain()
     this.wetIn.connect(this.dry)
-    this.wetIn.connect(this.convolver)
-    this.convolver.connect(this.wet)
+    const mk = (): [ConvolverNode, GainNode] => {
+      const c = ctx.createConvolver()
+      const g = ctx.createGain()
+      this.wetIn.connect(c)
+      c.connect(g)
+      g.connect(this.wet)
+      return [c, g]
+    }
+    const [c0, g0] = mk()
+    const [c1, g1] = mk()
+    g0.gain.value = 1
+    g1.gain.value = 0
+    this.convolvers = [c0, c1]
+    this.convGains = [g0, g1]
     this.wet.connect(this.wetOut)
     this.dry.connect(this.wetOut)
+  }
+  private impulse(room: number): AudioBuffer {
+    let ir = this.irCache.get(room)
+    if (!ir) {
+      const seconds = 0.4 + (room / 10) * 3.6
+      const decay = 4.5 - (room / 10) * 2.5
+      ir = makeImpulseResponse(this.ctx, seconds, decay)
+      if (this.irCache.size >= IR_CACHE_SIZE) {
+        const oldest = this.irCache.keys().next().value
+        if (oldest !== undefined) this.irCache.delete(oldest)
+      }
+      this.irCache.set(room, ir)
+    }
+    return ir
   }
   set(p: EffectsParams['reverb']) {
     const t = this.ctx.currentTime
     const room = Math.round(p.room)
     if (room !== this.lastRoom) {
+      const ir = this.impulse(room)
+      if (this.lastRoom < 0) {
+        this.convolvers[this.activeIdx].buffer = ir
+      } else {
+        const next = this.activeIdx === 0 ? 1 : 0
+        this.convolvers[next].buffer = ir
+        this.convGains[next].gain.setTargetAtTime(1, t, 0.06)
+        this.convGains[this.activeIdx].gain.setTargetAtTime(0, t, 0.06)
+        this.activeIdx = next
+      }
       this.lastRoom = room
-      const seconds = 0.4 + (room / 10) * 3.6
-      const decay = 4.5 - (room / 10) * 2.5
-      this.convolver.buffer = makeImpulseResponse(this.ctx, seconds, decay)
     }
     this.wet.gain.setTargetAtTime((p.mix / 10) * 0.9, t, 0.02)
   }

@@ -1,59 +1,94 @@
+import { Transport } from './Transport'
+
 /**
  * Tiny synthesized rhythm section. 16-step patterns, one bar of 4/4.
  * K = kick, S = snare, H = closed hat, O = open hat, . = rest
+ *
+ * Step times come from the shared Transport grid (16th notes), so the bar
+ * lines up with the metronome's accent whichever was started first.
  */
 export type DrumStyle = 'Rock' | 'Blues' | 'Pop' | 'Funk'
 
-interface Pattern {
+export interface Pattern {
   kick: string
   snare: string
   hat: string
-  swing: number // 0..1 amount of eighth-note swing
+  /**
+   * Swing amount 0..1: how far the swung steps are pushed late, as a fraction
+   * of one sixteenth. With `swingGrid` 8, 0.667 puts the off-beat eighth on
+   * the triplet (a shuffle).
+   */
+  swing: number
+  /**
+   * Which steps are swung.
+   *   8  = eighth-note swing: only the off-beat eighths (steps 2, 6, 10, 14)
+   *        are delayed by `swing` sixteenths.
+   *   16 = sixteenth-note swing: every odd sixteenth (1, 3, 5, ...) is delayed
+   *        by half of `swing` sixteenths.
+   */
+  swingGrid: 8 | 16
 }
 
-const PATTERNS: Record<DrumStyle, Pattern> = {
+export const PATTERNS: Record<DrumStyle, Pattern> = {
   Rock: {
     kick: 'x...x...x...x.x.',
     snare: '....x.......x...',
     hat: 'x.x.x.x.x.x.x.x.',
     swing: 0,
+    swingGrid: 8,
   },
   Blues: {
+    // straight eighths on the hat, shuffled by the eighth-note swing; the
+    // kick's "and" hits (steps 6 and 14) swing with it
     kick: 'x.....x.x.....x.',
     snare: '....x.......x...',
-    hat: 'x..x..x..x..x..x',
-    swing: 0.6,
+    hat: 'x.x.x.x.x.x.x.x.',
+    swing: 0.667,
+    swingGrid: 8,
   },
   Pop: {
     kick: 'x......xx.......',
     snare: '....x.......x...',
     hat: 'xxxxxxxxxxxxxxxx',
     swing: 0,
+    swingGrid: 8,
   },
   Funk: {
     kick: 'x..x..x...x..x..',
     snare: '....x..x.x..x...',
     hat: 'x.xxx.xxx.xxx.xO',
     swing: 0.15,
+    swingGrid: 16,
   },
+}
+
+/** Seconds a step is delayed by the pattern's swing (see Pattern). */
+export function swingOffset(p: Pick<Pattern, 'swing' | 'swingGrid'>, step: number, sixteenth: number): number {
+  const s = ((step % 16) + 16) % 16
+  if (p.swingGrid === 8) return s % 4 === 2 ? p.swing * sixteenth : 0
+  return s % 2 === 1 ? p.swing * sixteenth * 0.5 : 0
 }
 
 export type StepListener = (step: number, time: number) => void
 
+const STEPS_PER_BEAT = 4
+const LOOKAHEAD = 0.1
+const TICK_MS = 25
+
 export class DrumMachine {
   private ctx: AudioContext
   private out: GainNode
+  private transport: Transport
   private noiseBuf: AudioBuffer
   private timer: number | null = null
-  private nextStepTime = 0
   private step = 0
   private _running = false
   private _style: DrumStyle = 'Rock'
   private listeners = new Set<StepListener>()
-  bpm = 110
 
-  constructor(ctx: AudioContext, destination: AudioNode) {
+  constructor(ctx: AudioContext, destination: AudioNode, transport: Transport = new Transport(ctx)) {
     this.ctx = ctx
+    this.transport = transport
     this.out = ctx.createGain()
     this.out.gain.value = 0.7
     this.out.connect(destination)
@@ -61,6 +96,13 @@ export class DrumMachine {
     this.noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate)
     const d = this.noiseBuf.getChannelData(0)
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1
+  }
+
+  get bpm(): number {
+    return this.transport.bpm
+  }
+  set bpm(v: number) {
+    this.transport.bpm = v
   }
 
   get running() {
@@ -71,6 +113,11 @@ export class DrumMachine {
   }
   set style(s: DrumStyle) {
     this._style = s
+  }
+
+  /** The shared clock this drum machine schedules on. */
+  get clock(): Transport {
+    return this.transport
   }
 
   setVolume(v: number) {
@@ -85,31 +132,34 @@ export class DrumMachine {
   start() {
     if (this._running) return
     this._running = true
-    this.step = 0
-    this.nextStepTime = this.ctx.currentTime + 0.05
-    this.timer = window.setInterval(() => this.schedule(), 25)
+    this.transport.acquire()
+    // join the grid at the next sixteenth (step 0 when nothing else is running)
+    this.step = this.transport.firstStep(STEPS_PER_BEAT)
+    this.timer = window.setInterval(() => this.schedule(), TICK_MS)
   }
 
   stop() {
+    if (!this._running) return
     this._running = false
     if (this.timer !== null) window.clearInterval(this.timer)
     this.timer = null
+    this.transport.release()
   }
 
   private schedule() {
     const p = PATTERNS[this._style]
-    const sixteenth = 60 / this.bpm / 4
-    while (this.nextStepTime < this.ctx.currentTime + 0.1) {
+    const sixteenth = this.transport.beatSeconds / STEPS_PER_BEAT
+    const now = this.ctx.currentTime
+    // after a stall, skip the missed steps instead of stacking them on "now"
+    this.step = this.transport.catchUp(this.step, STEPS_PER_BEAT)
+    while (this.transport.timeOf(this.step, STEPS_PER_BEAT) < now + LOOKAHEAD) {
       const s = this.step % 16
-      const swingOffset = s % 2 === 1 ? p.swing * sixteenth * 0.5 : 0
-      const t = this.nextStepTime + swingOffset
+      const t = this.transport.timeOf(this.step, STEPS_PER_BEAT) + swingOffset(p, s, sixteenth)
       if (p.kick[s] === 'x') this.kick(t)
       if (p.snare[s] === 'x') this.snare(t)
       if (p.hat[s] === 'x') this.hat(t, false)
       if (p.hat[s] === 'O') this.hat(t, true)
-      const st = s
-      window.setTimeout(() => this.listeners.forEach((l) => l(st, t)), Math.max(0, (t - this.ctx.currentTime) * 1000))
-      this.nextStepTime += sixteenth
+      window.setTimeout(() => this.listeners.forEach((l) => l(s, t)), Math.max(0, (t - now) * 1000))
       this.step++
     }
   }

@@ -22,7 +22,10 @@ class AudioSystemImpl {
   async unlock(): Promise<AudioContext> {
     if (!this.ctx) {
       const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-      this.ctx = new Ctor({ latencyHint: 'interactive', sampleRate: 44100 })
+      // No fixed sampleRate: adopt the device rate (usually 48 kHz) so the
+      // browser does not resample the whole output. Everything downstream
+      // renders at ctx.sampleRate.
+      this.ctx = new Ctor({ latencyHint: 'interactive' })
       this.ctx.addEventListener('statechange', () => this.emit())
     }
     if (this.ctx.state !== 'running') {

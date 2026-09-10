@@ -1,39 +1,52 @@
+import { Transport } from './Transport'
+
 /**
  * Look-ahead scheduled metronome (Chris Wilson style): a timer wakes up every
  * 25ms and schedules any clicks that fall within the next 100ms on the audio
  * clock, so timing is sample-accurate regardless of main-thread jitter.
+ *
+ * Beat times come from the shared Transport grid, so the click stays locked
+ * to the drum machine whichever was started first.
  */
 export type BeatListener = (beat: number, time: number) => void
+
+const LOOKAHEAD = 0.1
+const TICK_MS = 25
 
 export class Metronome {
   private ctx: AudioContext
   private out: GainNode
+  private transport: Transport
   private timer: number | null = null
-  private nextBeatTime = 0
   private beat = 0
-  private _bpm = 110
   private _running = false
   private listeners = new Set<BeatListener>()
   private beatsPerBar = 4
   private tapTimes: number[] = []
 
-  constructor(ctx: AudioContext, destination: AudioNode) {
+  constructor(ctx: AudioContext, destination: AudioNode, transport: Transport = new Transport(ctx)) {
     this.ctx = ctx
+    this.transport = transport
     this.out = ctx.createGain()
     this.out.gain.value = 0.6
     this.out.connect(destination)
   }
 
   get bpm(): number {
-    return this._bpm
+    return this.transport.bpm
   }
 
   set bpm(v: number) {
-    this._bpm = Math.min(240, Math.max(40, Math.round(v)))
+    this.transport.bpm = v
   }
 
   get running(): boolean {
     return this._running
+  }
+
+  /** The shared clock this metronome schedules on. */
+  get clock(): Transport {
+    return this.transport
   }
 
   setVolume(v: number) {
@@ -48,15 +61,18 @@ export class Metronome {
   start(): void {
     if (this._running) return
     this._running = true
-    this.beat = 0
-    this.nextBeatTime = this.ctx.currentTime + 0.05
-    this.timer = window.setInterval(() => this.schedule(), 25)
+    this.transport.acquire()
+    // join the grid at the next beat (beat 0 when nothing else is running)
+    this.beat = this.transport.firstStep(1)
+    this.timer = window.setInterval(() => this.schedule(), TICK_MS)
   }
 
   stop(): void {
+    if (!this._running) return
     this._running = false
     if (this.timer !== null) window.clearInterval(this.timer)
     this.timer = null
+    this.transport.release()
   }
 
   /** Returns the detected tempo after 2+ taps, or null. */
@@ -71,18 +87,19 @@ export class Metronome {
     const avg = intervals.reduce((a, b) => a + b, 0) / intervals.length
     const bpm = Math.round(60000 / avg)
     this.bpm = bpm
-    return this._bpm
+    return this.bpm
   }
 
   private schedule() {
-    const lookahead = 0.1
-    while (this.nextBeatTime < this.ctx.currentTime + lookahead) {
-      this.click(this.nextBeatTime, this.beat % this.beatsPerBar === 0)
+    const now = this.ctx.currentTime
+    // after a stall, skip the missed beats instead of stacking them on "now"
+    this.beat = this.transport.catchUp(this.beat, 1)
+    while (this.transport.timeOf(this.beat, 1) < now + LOOKAHEAD) {
+      const t = this.transport.timeOf(this.beat, 1)
       const b = this.beat
-      const t = this.nextBeatTime
-      const delay = Math.max(0, (t - this.ctx.currentTime) * 1000)
+      this.click(t, b % this.beatsPerBar === 0)
+      const delay = Math.max(0, (t - now) * 1000)
       window.setTimeout(() => this.listeners.forEach((l) => l(b, t)), delay)
-      this.nextBeatTime += 60 / this._bpm
       this.beat++
     }
   }

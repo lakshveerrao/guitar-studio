@@ -108,7 +108,8 @@ export class GuitarEngine {
     const sustainScale = 0.35 + (this.sustain / 10) * 1.9 // 0.35x .. 2.25x
     const fretDamp = 1 - Math.min(fret, 20) * 0.012 // higher frets ring a little shorter
     const voice = this.strings[string]
-    voice.pluck({
+    // the voice reports the time the note is actually scheduled at (never in the past)
+    const startTime = voice.pluck({
       fret,
       velocity: legato ? velocity * 0.75 : velocity,
       palmMute,
@@ -119,7 +120,7 @@ export class GuitarEngine {
       time: o.time,
     })
     const e: NoteEvent = {
-      time: o.time ?? this.ctx.currentTime,
+      time: startTime,
       string,
       fret,
       velocity,
@@ -143,7 +144,9 @@ export class GuitarEngine {
     for (let i = 0; i < NUM_STRINGS; i++) order.push(i)
     if (o.direction === 'up') order.reverse()
     const active = order.filter((s) => o.frets[s] >= 0)
-    const t0 = Math.max(o.time ?? this.ctx.currentTime, this.ctx.currentTime)
+    // Explicit future times for every string: the small look-ahead keeps the
+    // first string on the same grid as the rest (each render takes ~1 ms).
+    const t0 = Math.max(o.time ?? 0, this.ctx.currentTime + 0.005)
     active.forEach((s, i) => {
       const jitter = (Math.random() - 0.5) * gap * 0.3
       const t = t0 + i * gap + Math.max(0, jitter)
