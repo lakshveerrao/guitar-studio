@@ -29,6 +29,13 @@ export interface HidSnapshot {
   reports: number
 }
 
+/**
+ * One HIDReportItem. Usages are 32-bit (page << 16 | id). Range items
+ * (Usage Minimum .. Usage Maximum) arrive either already expanded in `usages`
+ * (Chromium) or only as `usageMinimum` / `usageMaximum`, depending on the
+ * browser, so both spellings are handled. `usagePage` is not part of the spec
+ * but some implementations add it; it is honoured when present.
+ */
 type HidItem = {
   isRange?: boolean
   isConstant?: boolean
@@ -83,8 +90,29 @@ interface ReportLayout {
   axisCount: number
 }
 
+/** Usage page and 16-bit usage ids of one item, whichever way the browser spelled a range. */
+export function itemUsages(it: HidItem): { page: number; usages: number[] } {
+  const listed = (it.usages ?? []).filter((u) => typeof u === 'number')
+  const hasRange = typeof it.usageMinimum === 'number' && typeof it.usageMaximum === 'number' && it.usageMaximum >= it.usageMinimum
+  let usages: number[]
+  let first: number | undefined
+  if (listed.length) {
+    usages = listed.map((u) => u & 0xffff)
+    first = listed[0]
+  } else if (hasRange) {
+    const lo = (it.usageMinimum as number) & 0xffff
+    const hi = (it.usageMaximum as number) & 0xffff
+    usages = Array.from({ length: Math.min(hi - lo + 1, 256) }, (_, i) => lo + i)
+    first = it.usageMinimum as number
+  } else {
+    usages = []
+  }
+  const page = typeof it.usagePage === 'number' ? it.usagePage : first !== undefined ? first >>> 16 : 0
+  return { page, usages }
+}
+
 /** Walk a report descriptor into bit-level fields for one report id. */
-function layoutFor(items: HidItem[], counters: { buttons: number; axes: number }): ReportLayout {
+export function layoutFor(items: HidItem[], counters: { buttons: number; axes: number }): ReportLayout {
   const fields: Field[] = []
   let bit = 0
   for (const it of items) {
@@ -95,11 +123,9 @@ function layoutFor(items: HidItem[], counters: { buttons: number; axes: number }
       bit += size * count
       continue
     }
-    const usages = it.isRange && it.usageMinimum !== undefined && it.usageMaximum !== undefined
-      ? Array.from({ length: it.usageMaximum - it.usageMinimum + 1 }, (_, i) => (it.usageMinimum as number) + i)
-      : (it.usages ?? []).map((u) => u & 0xffff)
-    const page = it.usagePage ?? (usages.length ? (it.usages ?? [])[0] >>> 16 : 0)
-    if (page === USAGE_PAGE_BUTTON || (usages.length && (it.usages ?? [])[0] >>> 16 === USAGE_PAGE_BUTTON)) {
+    const { page, usages } = itemUsages(it)
+    // anything on the Button page is a button, range-declared or not
+    if (page === USAGE_PAGE_BUTTON) {
       fields.push({ kind: 'button', index: counters.buttons, bitOffset: bit, size, count, min: it.logicalMinimum, max: it.logicalMaximum })
       counters.buttons += count
     } else if (page === USAGE_PAGE_GENERIC && usages.some((u) => u === USAGE_HAT)) {
@@ -135,6 +161,7 @@ class HidInputImpl {
   private snapshot: HidSnapshot = { connected: false, name: '', vendorId: 0, productId: 0, buttons: [], axes: [], reports: 0 }
   private listeners = new Set<(s: HidSnapshot) => void>()
   private listening = false
+  private session = 0 // bumped by disconnect(); a connect attempt that outlives its session is discarded
 
   get supported(): boolean {
     return typeof navigator !== 'undefined' && 'hid' in navigator && typeof window !== 'undefined' && window.isSecureContext
@@ -155,6 +182,7 @@ class HidInputImpl {
       this.setState('unsupported', 'WebHID needs Chrome or Edge over HTTPS.')
       return
     }
+    const session = ++this.session
     this.setState('connecting')
     try {
       const hid = (navigator as unknown as { hid: HidLike }).hid
@@ -166,12 +194,14 @@ class HidInputImpl {
           { usagePage: USAGE_PAGE_GENERIC, usage: 0x08 },
         ],
       })
+      if (session !== this.session) return // cancelled while the picker was open
       if (!devices.length) {
         this.setState('disconnected')
         return
       }
-      await this.open(devices[0])
+      await this.open(devices[0], session)
     } catch (e) {
+      if (session !== this.session) return
       const msg = (e as Error).message || 'Could not connect'
       if (/cancel|No device selected/i.test(msg)) this.setState('disconnected')
       else this.setState('error', msg)
@@ -185,14 +215,16 @@ class HidInputImpl {
       const hid = (navigator as unknown as { hid: HidLike }).hid
       const devices = await hid.getDevices()
       if (!devices.length) return false
-      await this.open(devices[0])
+      await this.open(devices[0], this.session)
       return true
     } catch {
       return false
     }
   }
 
+  /** Also the Cancel path while 'connecting': a connect attempt still in flight is discarded when it settles. */
   async disconnect(): Promise<void> {
+    this.session++
     const d = this.device
     this.device = null
     if (d) {
@@ -222,9 +254,21 @@ class HidInputImpl {
     this.emit()
   }
 
-  private async open(device: HidDeviceLike) {
-    if (this.device && this.device !== device) await this.disconnect()
+  private async open(device: HidDeviceLike, session: number) {
+    if (this.device && this.device !== device) {
+      await this.disconnect()
+      session = this.session // disconnect() bumped it on our behalf
+    }
     if (!device.opened) await device.open()
+    if (session !== this.session) {
+      // cancelled while opening: do not keep a handle the UI cannot see
+      try {
+        if (device.opened) await device.close()
+      } catch {
+        /* ignore */
+      }
+      return
+    }
     this.device = device
     this.layouts.clear()
     const counters = { buttons: 0, axes: 0 }

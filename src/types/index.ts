@@ -13,6 +13,8 @@ export interface NoteEvent {
   bend: number
   palmMute: boolean
   chord?: string
+  /** A dead thud on a muted string: not a musical note, ignored by the recorder and the trainer. */
+  dead?: boolean
 }
 
 export interface StringState {
@@ -27,7 +29,12 @@ export type Action =
   | { type: 'STRUM_DOWN'; strength?: number; speed?: number }
   | { type: 'STRUM_UP'; strength?: number; speed?: number }
   | { type: 'PICK_STRING'; string: StringIndex; velocity?: number }
-  | { type: 'FRET_NOTE'; string: StringIndex; fret: number; play?: boolean; velocity?: number }
+  /**
+   * Fret a string. `play` sounds it; with `legatoOnly` the note is only sounded as a
+   * hammer-on / pull-off while the string still rings inside the legato window,
+   * otherwise the fret changes silently (the strum hand sounds it).
+   */
+  | { type: 'FRET_NOTE'; string: StringIndex; fret: number; play?: boolean; velocity?: number; legatoOnly?: boolean }
   | { type: 'RELEASE_FRET'; string: StringIndex }
   | { type: 'PALM_MUTE'; on: boolean }
   | { type: 'BEND'; amount: number; string?: StringIndex }

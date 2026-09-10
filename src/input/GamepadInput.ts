@@ -45,17 +45,57 @@ export interface GamepadSnapshot {
   timestamp: number
 }
 
-function loadBindings(): GamepadBinding[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as GamepadBinding[]
-      if (Array.isArray(parsed)) return parsed
+const ACTION_IDS = new Set<string>(GAMEPAD_ACTIONS.map((a) => a.id))
+
+/** Shape check for one persisted binding: anything that fails is dropped rather than crashing the poll loop. */
+export function isGamepadBinding(b: unknown): b is GamepadBinding {
+  if (!b || typeof b !== 'object') return false
+  const x = b as Record<string, unknown>
+  if (typeof x.action !== 'string' || !ACTION_IDS.has(x.action)) return false
+  if (x.kind !== 'button' && x.kind !== 'axis') return false
+  if (typeof x.index !== 'number' || !Number.isInteger(x.index) || x.index < 0 || x.index > 255) return false
+  if (x.direction !== undefined && x.direction !== 'positive' && x.direction !== 'negative') return false
+  if (x.threshold !== undefined && (typeof x.threshold !== 'number' || !Number.isFinite(x.threshold) || x.threshold < 0 || x.threshold >= 1)) return false
+  return true
+}
+
+/** Keep only well-formed bindings; an empty result falls back to the defaults. */
+export function sanitizeBindings(raw: unknown): GamepadBinding[] {
+  const list = Array.isArray(raw) ? raw.filter(isGamepadBinding) : []
+  const cleaned = list.map((b) => {
+    const nb: GamepadBinding = { action: b.action, kind: b.kind, index: b.index }
+    if (b.kind === 'axis') {
+      nb.direction = b.direction ?? 'positive'
+      if (b.threshold !== undefined) nb.threshold = b.threshold
     }
+    return nb
+  })
+  return cleaned.length ? cleaned : DEFAULT_BINDINGS.map((b) => ({ ...b }))
+}
+
+function loadBindings(): GamepadBinding[] {
+  let raw: string | null = null
+  try {
+    raw = localStorage.getItem(STORAGE_KEY)
+  } catch {
+    return DEFAULT_BINDINGS.map((b) => ({ ...b }))
+  }
+  if (!raw) return DEFAULT_BINDINGS.map((b) => ({ ...b }))
+  let parsed: unknown = null
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    parsed = null
+  }
+  const bindings = sanitizeBindings(parsed)
+  try {
+    // rewrite the repaired list so a corrupt key does not have to be cleaned by hand
+    const json = JSON.stringify(bindings)
+    if (json !== raw) localStorage.setItem(STORAGE_KEY, json)
   } catch {
     /* ignore */
   }
-  return DEFAULT_BINDINGS.map((b) => ({ ...b }))
+  return bindings
 }
 
 /**
@@ -112,7 +152,7 @@ class GamepadInputImpl {
   }
 
   setBindings(b: GamepadBinding[]) {
-    this.bindings = b.map((x) => ({ ...x }))
+    this.bindings = sanitizeBindings(b)
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.bindings))
     } catch {
@@ -128,13 +168,47 @@ class GamepadInputImpl {
   private onConnect = (e: GamepadEvent) => {
     store.set({ gamepadName: e.gamepad.id })
   }
-  private onDisconnect = () => {
-    store.set({ gamepadName: null })
-    this.snapshot = { connected: false, id: '', index: -1, buttons: [], axes: [], timestamp: 0 }
-    this.snapListeners.forEach((l) => l(this.snapshot))
+  private onDisconnect = (e: GamepadEvent) => {
+    // poll() will not see this pad again, so release whatever it was holding here
+    this.releasePad(`pad${e.gamepad.index}`)
+    if (this.snapshot.index === e.gamepad.index || !this.snapshot.connected) {
+      store.set({ gamepadName: null })
+      this.snapshot = { connected: false, id: '', index: -1, buttons: [], axes: [], timestamp: 0 }
+      this.snapListeners.forEach((l) => l(this.snapshot))
+    }
+  }
+
+  /**
+   * Release every hold action (palm mute / vibrato / bend) a pad had engaged.
+   * evaluate() reads missing buttons as released and missing axes as centred,
+   * so an empty snapshot fires the off edges. Idempotent, and scoped to one
+   * transport key so a still-held HID device is not disturbed.
+   */
+  private releasePad(key: string) {
+    try {
+      this.evaluate(key, [], [], 'gamepad')
+    } catch {
+      /* a bad binding must not block the release */
+    }
+    this.prevButtons.delete(key)
+    for (const k of Array.from(this.prevAxisState.keys())) if (k.startsWith(`${key}:`)) this.prevAxisState.delete(k)
   }
 
   private poll() {
+    try {
+      this.pollPads()
+    } catch (e) {
+      // never let a downstream handler kill the animation-frame loop
+      if (!this.warned) {
+        this.warned = true
+        console.warn('[gamepad] poll failed', e)
+      }
+    }
+  }
+
+  private warned = false
+
+  private pollPads() {
     let pads: (Gamepad | null)[] = []
     try {
       pads = navigator.getGamepads ? Array.from(navigator.getGamepads()) : []
@@ -144,12 +218,14 @@ class GamepadInputImpl {
     const pad = pads.find((p) => p && p.connected) ?? null
     if (!pad) {
       if (this.snapshot.connected) {
+        this.releasePad(`pad${this.snapshot.index}`)
         this.snapshot = { connected: false, id: '', index: -1, buttons: [], axes: [], timestamp: 0 }
         this.snapListeners.forEach((l) => l(this.snapshot))
         if (store.get().gamepadName) store.set({ gamepadName: null })
       }
       return
     }
+    if (this.snapshot.connected && this.snapshot.index !== pad.index) this.releasePad(`pad${this.snapshot.index}`)
     if (store.get().gamepadName !== pad.id) store.set({ gamepadName: pad.id })
 
     const buttons = pad.buttons.map((b) => b.value)
@@ -176,6 +252,7 @@ class GamepadInputImpl {
     let bendBound = false
 
     for (const b of this.bindings) {
+      if (!isGamepadBinding(b)) continue // defensive: a hand-edited entry must not stop the others
       if (b.kind === 'button') {
         const now = pressedNow[b.index] ?? false
         const was = prev[b.index] ?? false
