@@ -4,3 +4,4 @@ dist
 .vercel-*
 *.log
 .audit-*.json
+.claude/
