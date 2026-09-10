@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 
 interface KnobProps {
   label: string
@@ -14,10 +14,17 @@ interface KnobProps {
 
 /**
  * Rotary knob: drag vertically (or use the keyboard arrows) to change.
- * 270 degrees of travel like a real amp pot.
+ * 270 degrees of travel like a real amp pot. The mouse wheel turns a knob
+ * only once it has focus (click it first), so scrolling the page across a
+ * row of knobs neither changes them nor gets stuck.
  */
 export function Knob({ label, value, min = 0, max = 10, step = 0.1, onChange, size = 52, format, accent = '#4da3ff' }: KnobProps) {
+  const ref = useRef<HTMLDivElement>(null)
   const start = useRef<{ y: number; v: number } | null>(null)
+  // latest props for the native wheel listener, which is attached once
+  const latest = useRef({ value, min, max, step, onChange })
+  latest.current = { value, min, max, step, onChange }
+
   const t = (value - min) / (max - min)
   const angle = -135 + t * 270
   const r = size / 2
@@ -38,7 +45,10 @@ export function Knob({ label, value, min = 0, max = 10, step = 0.1, onChange, si
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       start.current = { y: e.clientY, v: value }
-      ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+      const el = e.currentTarget as HTMLElement
+      el.setPointerCapture(e.pointerId)
+      // preventDefault below also suppresses the default focus, and the wheel only works on a focused knob
+      el.focus({ preventScroll: true })
       e.preventDefault()
     },
     [value],
@@ -64,14 +74,27 @@ export function Knob({ label, value, min = 0, max = 10, step = 0.1, onChange, si
     else return
     e.preventDefault()
   }
-  const onWheel = (e: React.WheelEvent) => {
-    const dir = e.deltaY < 0 ? 1 : -1
-    onChange(clamp(value + dir * (max - min) * 0.02))
-  }
+
+  // React registers `wheel` passively, so a native non-passive listener is the only way to keep the page still
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (document.activeElement !== el) return // unfocused knob: the page scrolls as usual
+      if (e.deltaY === 0) return
+      e.preventDefault()
+      const { value, min, max, step, onChange } = latest.current
+      const c = (v: number) => Math.min(max, Math.max(min, Math.round(v / step) * step))
+      onChange(c(value - Math.sign(e.deltaY) * (max - min) * 0.02))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
 
   return (
     <div className="flex flex-col items-center gap-1 select-none" style={{ width: size + 12 }}>
       <div
+        ref={ref}
         role="slider"
         tabIndex={0}
         aria-label={label}
@@ -83,7 +106,6 @@ export function Knob({ label, value, min = 0, max = 10, step = 0.1, onChange, si
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onKeyDown={onKeyDown}
-        onWheel={onWheel}
         onDoubleClick={() => onChange(clamp((min + max) / 2))}
         className="relative cursor-ns-resize rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         style={{ width: size, height: size, touchAction: 'none' }}

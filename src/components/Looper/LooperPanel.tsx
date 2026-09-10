@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useStore } from '../../state/store'
+import { store, useStore } from '../../state/store'
 import { GuitarController } from '../../input/GuitarController'
+import { getStudio } from '../../audio/Studio'
 import { Section, Stat, Toggle } from '../ui/controls'
 import { STRING_LABELS } from '../../music/tuning'
 
@@ -8,6 +9,28 @@ function fmt(seconds: number) {
   const m = Math.floor(seconds / 60)
   const s = seconds - m * 60
   return `${m}:${s.toFixed(1).padStart(4, '0')}`
+}
+
+// When a take starts (from any tab: R key, TopBar, this panel) remember the moment on both clocks,
+// so the live length counter is right even if this panel mounts mid-take.
+let recStartWall = 0
+let recStartAudio = -1
+let prevRecorderState = store.get().recorder
+store.subscribe(() => {
+  const r = store.get().recorder
+  if (r === prevRecorderState) return
+  prevRecorderState = r
+  if (r === 'recording') {
+    recStartWall = performance.now()
+    recStartAudio = getStudio()?.ctx.currentTime ?? -1
+  }
+})
+
+/** seconds since the current take started, on the audio clock when available (matches the recorded offsets) */
+function recordingElapsed(): number {
+  const ctx = getStudio()?.ctx
+  if (ctx && recStartAudio >= 0) return Math.max(0, ctx.currentTime - recStartAudio)
+  return Math.max(0, (performance.now() - recStartWall) / 1000)
 }
 
 export function LooperPanel() {
@@ -20,11 +43,12 @@ export function LooperPanel() {
   const [elapsed, setElapsed] = useState(0)
 
   useEffect(() => {
+    if (state === 'idle') return // nothing moves: no frame loop
+    if (state === 'recording' && !recStartWall) recStartWall = performance.now() // take started before this module loaded
     let raf = 0
-    const start = performance.now()
     const tick = () => {
       setPos(rec.position)
-      if (state === 'recording') setElapsed((performance.now() - start) / 1000)
+      if (state === 'recording') setElapsed(recordingElapsed())
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)

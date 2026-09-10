@@ -1,12 +1,75 @@
-import { memo } from 'react'
+import { memo, useSyncExternalStore } from 'react'
+import { store } from '../../state/store'
 import { VB_W } from './geometry'
+
+// ---------------------------------------------------- scene activity ----
+// The scene's CSS animations are paused (via the `stage-paused` class) while
+// the tab is hidden, and while applause is off and nothing has been played
+// for a while, so an idle page does not keep repainting the whole svg.
+
+const IDLE_MS = 6000
+let paused = false
+let tracking = false
+let lastActivity = 0
+let idleTimer = 0
+const listeners = new Set<() => void>()
+
+function setPaused(next: boolean) {
+  if (next === paused) return
+  paused = next
+  listeners.forEach((l) => l())
+}
+
+function evaluate() {
+  const idle = performance.now() - lastActivity >= IDLE_MS
+  setPaused(document.hidden || (!store.get().crowdOn && idle))
+}
+
+function touch() {
+  lastActivity = performance.now()
+  window.clearTimeout(idleTimer)
+  idleTimer = window.setTimeout(evaluate, IDLE_MS + 50)
+  evaluate()
+}
+
+function startTracking() {
+  if (tracking) return
+  tracking = true
+  let prev = store.get()
+  store.subscribe(() => {
+    const st = store.get()
+    const played = st.pluckStamp !== prev.pluckStamp || st.strumStamp !== prev.strumStamp
+    const crowdChanged = st.crowdOn !== prev.crowdOn
+    prev = st
+    if (played) touch()
+    else if (crowdChanged) evaluate()
+  })
+  document.addEventListener('visibilitychange', evaluate)
+  touch()
+}
+
+function subscribePaused(l: () => void) {
+  startTracking()
+  listeners.add(l)
+  return () => {
+    listeners.delete(l)
+  }
+}
+
+/** True while the stage animations should stand still. */
+export function useStagePaused(): boolean {
+  return useSyncExternalStore(subscribePaused, () => paused, () => false)
+}
+
+// --------------------------------------------------------- backdrop ----
 
 /** Stage backdrop: dark hall, lighting truss, moving spotlights, reflective floor. Drawn behind the player. */
 export const StageBackdrop = memo(function StageBackdrop({ top, bottom }: { top: number; bottom: number }) {
+  const paused = useStagePaused()
   const h = bottom - top
   const lamps = [120, 360, 600, 840, 1080, 1320, 1560]
   return (
-    <g pointerEvents="none">
+    <g pointerEvents="none" className={paused ? 'stage-paused' : undefined}>
       <defs>
         <linearGradient id="stageWall" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="#05060a" />
@@ -64,9 +127,14 @@ export const StageBackdrop = memo(function StageBackdrop({ top, bottom }: { top:
         <g key={x}>
           <rect x={x - 14} y={top + 11} width={28} height={16} rx={3} fill="#262b33" stroke="#3a4049" />
           <circle cx={x} cy={top + 30} r={8} fill={i % 2 ? '#8fd3ff' : '#ffd08a'} opacity={0.95} />
-          <circle cx={x} cy={top + 30} r={16} fill={i % 2 ? '#4da3ff' : '#ffb457'} opacity={0.18} className="lamp-glow" />
         </g>
       ))}
+      {/* one pulsing layer for every lamp halo */}
+      <g className="lamp-glow">
+        {lamps.map((x, i) => (
+          <circle key={x} cx={x} cy={top + 30} r={16} fill={i % 2 ? '#4da3ff' : '#ffb457'} />
+        ))}
+      </g>
 
       {/* floor */}
       <rect x={0} y={bottom - 190} width={VB_W} height={190} fill="url(#stageFloor)" />
@@ -84,52 +152,101 @@ export const StageBackdrop = memo(function StageBackdrop({ top, bottom }: { top:
   )
 })
 
-/** Audience silhouettes in the foreground, clapping and bobbing. */
+// ------------------------------------------------------------ crowd ----
+
+interface Person {
+  i: number
+  x: number
+  y: number
+  scale: number
+  /** static lean of the raised arms, degrees */
+  tilt: number
+  fill: string
+  rim: string
+}
+
+interface CrowdGroup {
+  back: boolean
+  /** shoulder line of the group in viewBox units: the arms' skew pivots here */
+  shoulderY: number
+  people: Person[]
+}
+
+/**
+ * Audience silhouettes in the foreground, clapping and bobbing.
+ * Two rows of 38 people, each row split into three phase groups so neighbours
+ * move out of step. Every group is one bobbing layer with one layer of left
+ * arms and one of right arms (skewed about the shoulder line so every hand
+ * sways in place), instead of three animations per person.
+ */
 export const Crowd = memo(function Crowd({ y }: { y: number }) {
-  // two rows: a smaller back row, a larger front row; deterministic jitter
-  const people = Array.from({ length: 38 }, (_, i) => {
+  const paused = useStagePaused()
+  const rows = [
+    { y: y - 26, fill: '#0d111a', rim: '#1a2130', baseScale: 1.15 },
+    { y, fill: '#080a10', rim: '#232c3e', baseScale: 1.6 },
+  ]
+  const groups: CrowdGroup[] = rows.flatMap((row, r) =>
+    Array.from({ length: 3 }, () => ({ back: r === 0, shoulderY: row.y + 30 * (row.baseScale + 0.12), people: [] as Person[] })),
+  )
+  for (let i = 0; i < 38; i++) {
     const back = i < 18
+    const row = rows[back ? 0 : 1]
     const x = back ? 60 + i * 92 + ((i * 37) % 30) : 10 + (i - 18) * 84 + ((i * 53) % 26)
-    const scale = (back ? 1.15 : 1.6) + ((i * 53) % 10) / 40
-    const delay = ((i * 97) % 10) / 10
-    const dur = 0.5 + ((i * 31) % 6) / 20
-    return { x, y: back ? y - 26 : y, scale, delay, dur, i, fill: back ? '#0d111a' : '#080a10', rim: back ? '#1a2130' : '#232c3e' }
-  })
+    const scale = row.baseScale + ((i * 53) % 10) / 40
+    const tilt = ((i * 41) % 17) - 8
+    groups[(back ? 0 : 3) + (i % 3)].people.push({ i, x, y: row.y, scale, tilt, fill: row.fill, rim: row.rim })
+  }
   return (
-    <g pointerEvents="none">
+    <g pointerEvents="none" className={paused ? 'stage-paused' : undefined}>
       <defs>
         <linearGradient id="crowdFade" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="#05060a" stopOpacity="0" />
           <stop offset="1" stopColor="#05060a" stopOpacity="0.9" />
         </linearGradient>
+        {/* shoulders + head; fill/stroke inherited from the <use> */}
+        <g id="crowd-body">
+          <path d="M -34 60 C -34 22, -14 14, 0 14 C 14 14, 34 22, 34 60 Z" />
+          <circle cx={0} cy={0} r={15} />
+        </g>
+        {/* raised arms; the arm takes the <use> stroke, the hand its fill and `color` */}
+        <g id="crowd-arm-l">
+          <path d="M -26 30 L -40 -6 L -30 -14" strokeWidth={9} strokeLinecap="round" fill="none" />
+          <circle cx={-30} cy={-16} r={6} stroke="currentColor" strokeWidth={1} />
+        </g>
+        <g id="crowd-arm-r">
+          <path d="M 26 30 L 40 -6 L 30 -14" strokeWidth={9} strokeLinecap="round" fill="none" />
+          <circle cx={30} cy={-16} r={6} stroke="currentColor" strokeWidth={1} />
+        </g>
       </defs>
       <rect x={0} y={y - 90} width={VB_W} height={200} fill="url(#crowdFade)" />
-      {people.map((p) => (
-        <g
-          key={p.i}
-          className="crowd-person"
-          style={{ transformOrigin: `${p.x}px ${p.y + 60}px`, animationDelay: `${p.delay}s`, animationDuration: `${p.dur * 2}s` }}
-        >
-          <g transform={`translate(${p.x} ${p.y}) scale(${p.scale})`}>
-            {/* shoulders + head */}
-            <path d="M -34 60 C -34 22, -14 14, 0 14 C 14 14, 34 22, 34 60 Z" fill={p.fill} stroke={p.rim} strokeWidth={1.2} />
-            <circle cx={0} cy={0} r={15} fill={p.fill} stroke={p.rim} strokeWidth={1.2} />
-            {/* left arm raised, clapping */}
-            <g className="crowd-arm crowd-arm-l" style={{ transformOrigin: '-26px 30px', animationDelay: `${p.delay}s`, animationDuration: `${p.dur}s` }}>
-              <path d="M -26 30 L -40 -6 L -30 -14" stroke={p.fill} strokeWidth={9} strokeLinecap="round" fill="none" />
-              <circle cx={-30} cy={-16} r={6} fill={p.fill} stroke={p.rim} strokeWidth={1} />
+      {groups.map((g, gi) => {
+        const delay = `${((gi * 0.37) % 1).toFixed(2)}s`
+        const bob = `${(1.1 + (gi % 3) * 0.15).toFixed(2)}s`
+        const clap = `${(0.5 + ((gi * 2) % 5) * 0.05).toFixed(2)}s`
+        return (
+          <g key={gi} className="crowd-bob" style={{ animationDelay: delay, animationDuration: bob }}>
+            {g.people.map((p) => (
+              <use key={p.i} href="#crowd-body" transform={`translate(${p.x} ${p.y}) scale(${p.scale})`} fill={p.fill} stroke={p.rim} strokeWidth={1.2} />
+            ))}
+            <g className="crowd-arm crowd-arm-l" style={{ transformOrigin: `0px ${g.shoulderY}px`, animationDelay: delay, animationDuration: clap }}>
+              {g.people.map((p) => (
+                <use key={p.i} href="#crowd-arm-l" transform={`translate(${p.x} ${p.y}) scale(${p.scale}) rotate(${p.tilt} -26 30)`} stroke={p.fill} fill={p.fill} color={p.rim} />
+              ))}
             </g>
-            <g className="crowd-arm crowd-arm-r" style={{ transformOrigin: '26px 30px', animationDelay: `${p.delay}s`, animationDuration: `${p.dur}s` }}>
-              <path d="M 26 30 L 40 -6 L 30 -14" stroke={p.fill} strokeWidth={9} strokeLinecap="round" fill="none" />
-              <circle cx={30} cy={-16} r={6} fill={p.fill} stroke={p.rim} strokeWidth={1} />
+            <g className="crowd-arm crowd-arm-r" style={{ transformOrigin: `0px ${g.shoulderY}px`, animationDelay: delay, animationDuration: clap }}>
+              {g.people.map((p) => (
+                <use key={p.i} href="#crowd-arm-r" transform={`translate(${p.x} ${p.y}) scale(${p.scale}) rotate(${-p.tilt} 26 30)`} stroke={p.fill} fill={p.fill} color={p.rim} />
+              ))}
             </g>
           </g>
-        </g>
-      ))}
+        )
+      })}
       {/* a few phone lights */}
-      {[3, 9, 15].map((i) => (
-        <rect key={i} x={10 + i * 84 + 30} y={y - 44} width={7} height={11} rx={1.5} fill="#cfe8ff" opacity={0.85} className="lamp-glow" />
-      ))}
+      <g className="lamp-glow">
+        {[3, 9, 15].map((i) => (
+          <rect key={i} x={10 + i * 84 + 30} y={y - 44} width={7} height={11} rx={1.5} fill="#cfe8ff" />
+        ))}
+      </g>
     </g>
   )
 })

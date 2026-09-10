@@ -1,22 +1,60 @@
-import type { ReactNode } from 'react'
+import { useId, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { store, useStore } from '../../state/store'
 import { actions } from '../../hooks/useStudioActions'
 import { Slider, Toggle } from '../ui/controls'
 import { ensureStudio } from '../../audio/Studio'
 
+/**
+ * Modal built on the native <dialog> shown with showModal(): the rest of the
+ * page is inert (Tab stays inside), Escape closes it whatever element has
+ * focus (including the sliders, which the global hotkey handler skips), and
+ * focus returns to the opener when it closes.
+ */
 function Modal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+  const ref = useRef<HTMLDialogElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
+  useLayoutEffect(() => {
+    const d = ref.current
+    if (!d) return
+    if (!d.open) d.showModal()
+    panelRef.current?.focus({ preventScroll: true })
+    return () => {
+      // close while still in the document so the browser restores focus to the opener
+      if (d.open) d.close()
+    }
+  }, [])
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose} role="dialog" aria-modal>
-      <div className={`panel w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} max-h-[90vh] overflow-auto p-4 shadow-2xl`} onClick={(e) => e.stopPropagation()}>
+    <dialog
+      ref={ref}
+      className="modal"
+      aria-labelledby={titleId}
+      onCancel={(e) => {
+        e.preventDefault()
+        onClose()
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== 'Escape') return
+        e.preventDefault()
+        e.stopPropagation()
+        onClose()
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div ref={panelRef} tabIndex={-1} className={`panel w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} max-h-[90vh] overflow-auto p-4 shadow-2xl outline-none`}>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-bold tracking-wide">{title}</h2>
+          <h2 id={titleId} className="text-sm font-bold tracking-wide">
+            {title}
+          </h2>
           <button className="btn sm" onClick={onClose}>
             Close <span className="kbd ml-1">Esc</span>
           </button>
         </div>
         {children}
       </div>
-    </div>
+    </dialog>
   )
 }
 
@@ -43,7 +81,7 @@ export function HelpOverlay() {
           {row(<K k="X" />, 'silence all strings')}
           <div className="label mb-1 mt-4">Fretting (selected string)</div>
           {row(<><K k="A" /> <K k="S" /> <K k="D" /> <K k="F" /> <K k="G" /> <K k="H" /> <K k="J" /> <K k="K" /> <K k="L" /> <K k=";" /></>, 'fret 1 … 10, plays the note')}
-          {row(<><K k="Shift" /> + fret key</>, 'fret 11 … 20')}
+          {row(<><K k="Shift" /> + <K k="A" /> … <K k=";" /></>, 'fret 11 … 20 (Shift + ; = fret 20)')}
           {row(<><K k="0" /> <K k="`" /></>, 'open string')}
           {row(<><K k="←" /> <K k="→" /></>, 'select string')}
         </div>
@@ -55,16 +93,17 @@ export function HelpOverlay() {
           {row(<span className="text-xs text-ink-3">fret key while ringing</span>, 'hammer-on / pull-off')}
           <div className="label mb-1 mt-4">Transport</div>
           {row(<K k="R" />, 'start / stop recording')}
-          {row(<><K k="?" /> <K k="H" /></>, 'this help')}
+          {row(<><K k="?" /> <K k="F1" /></>, 'this help')}
           {row(<K k="Esc" />, 'close dialogs')}
           <div className="label mb-1 mt-4">Mouse & touch</div>
           <p className="text-xs text-ink-2 leading-relaxed">
             Click a string/fret on the neck to fret and play it. Drag a held note upward to bend (up to +2). Click a string over the body to pick it, or drag
-            vertically across the strings in the strum zone to strum. Click the O/× column to set open or muted strings.
+            vertically across the strings in the strum zone to strum — on a touch screen, hold a fret with one finger while strumming with another. Tap a pickup
+            to select it. Click the O/× column to set open or muted strings.
           </p>
         </div>
       </div>
-      <p className="text-[11px] text-ink-3 mt-3">Shortcuts are ignored while typing in a text field.</p>
+      <p className="text-[11px] text-ink-3 mt-3">Shortcuts are ignored while typing in a text field. The letter keys are physical positions (A S D F G H J K L ;), whatever your layout.</p>
     </Modal>
   )
 }

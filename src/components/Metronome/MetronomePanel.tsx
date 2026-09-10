@@ -36,6 +36,13 @@ export function MetronomePanel({ compact = false }: { compact?: boolean }) {
   const drumsRunning = useStore((s) => s.drumsRunning)
   const drumStyle = useStore((s) => s.drumStyle)
   const drumVolume = useStore((s) => s.drumVolume)
+  // what the user is typing in the BPM field; null while unfocused, when the store value shows
+  const [draft, setDraft] = useState<string | null>(null)
+  const commitDraft = () => {
+    const n = Number(draft)
+    if (draft !== null && draft.trim() !== '' && Number.isFinite(n)) actions.setBpm(n) // setBpm clamps to 40..240
+    setDraft(null)
+  }
 
   return (
     <Section
@@ -63,8 +70,17 @@ export function MetronomePanel({ compact = false }: { compact?: boolean }) {
             type="number"
             min={40}
             max={240}
-            value={bpm}
-            onChange={(e) => actions.setBpm(Number(e.target.value) || 40)}
+            value={draft ?? String(bpm)}
+            onFocus={() => setDraft(String(bpm))}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commitDraft}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur()
+              else if (e.key === 'Escape') {
+                setDraft(null)
+                e.currentTarget.blur()
+              }
+            }}
             aria-label="BPM"
           />
           <button className="btn sm" onClick={() => actions.setBpm(bpm + 1)} aria-label="faster">

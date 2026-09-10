@@ -6,6 +6,18 @@ import { Section, Slider, Toggle } from '../ui/controls'
 import { Tuner } from '../Tuner/Tuner'
 import { MetronomePanel } from '../Metronome/MetronomePanel'
 
+const isActivate = (e: React.KeyboardEvent) => e.key === 'Enter' || e.key === ' '
+
+/** Keyboard activation for a button that otherwise acts on pointerdown. Stops the window hotkeys (Space = strum down) from firing as well. */
+function activateOn(fire: () => void) {
+  return (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (!isActivate(e)) return
+    e.preventDefault()
+    e.stopPropagation()
+    if (!e.repeat) fire()
+  }
+}
+
 export function PlayPanel() {
   const mode = useStore((s) => s.mode)
   const palmMute = useStore((s) => s.palmMute)
@@ -38,6 +50,7 @@ export function PlayPanel() {
               e.preventDefault()
               InputManager.dispatch({ type: 'STRUM_DOWN' }, e.pointerType === 'touch' ? 'touch' : 'mouse')
             }}
+            onKeyDown={activateOn(() => InputManager.dispatch({ type: 'STRUM_DOWN' }, 'keyboard'))}
           >
             ↓ Down
           </button>
@@ -47,6 +60,7 @@ export function PlayPanel() {
               e.preventDefault()
               InputManager.dispatch({ type: 'STRUM_UP' }, e.pointerType === 'touch' ? 'touch' : 'mouse')
             }}
+            onKeyDown={activateOn(() => InputManager.dispatch({ type: 'STRUM_UP' }, 'keyboard'))}
           >
             ↑ Up
           </button>
@@ -91,6 +105,14 @@ export function PlayPanel() {
               onPointerDown={() => InputManager.dispatch({ type: 'BEND', amount: v }, 'mouse')}
               onPointerUp={() => InputManager.dispatch({ type: 'BEND', amount: 0 }, 'mouse')}
               onPointerLeave={() => bend > 0 && InputManager.dispatch({ type: 'BEND', amount: 0 }, 'mouse')}
+              onKeyDown={activateOn(() => InputManager.dispatch({ type: 'BEND', amount: v }, 'keyboard'))}
+              onKeyUp={(e) => {
+                if (!isActivate(e)) return
+                e.preventDefault()
+                e.stopPropagation()
+                InputManager.dispatch({ type: 'BEND', amount: 0 }, 'keyboard')
+              }}
+              onBlur={() => store.get().bend > 0 && InputManager.dispatch({ type: 'BEND', amount: 0 }, 'keyboard')}
             >
               +{v}
             </button>
