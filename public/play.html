@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Play — AirKords</title>
+<meta name="description" content="Connect your AirKords remotes and play guitar in the air. Record, enhance, or turn your jam into a full AI song.">
+<meta name="theme-color" content="#0b0d12">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+<style>
+body[data-voice=rock]{--brand:#ff7a45;--brand-bright:#ff9a6e;--brand-soft:rgba(255,122,69,.16);--brand-line:rgba(255,122,69,.42);--brand-ink:#2a0d00}
+body[data-voice=metal]{--brand:#ff4d5e;--brand-bright:#ff7482;--brand-soft:rgba(255,77,94,.16);--brand-line:rgba(255,77,94,.45);--brand-ink:#2a0006;--bg:#0c0b0d}
+.app{padding-top:20px;padding-bottom:60px}
+.top{display:flex;gap:12px;flex-wrap:wrap;align-items:stretch}
+.remote{flex:1 1 220px;display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--border);cursor:pointer;text-align:left;min-height:64px;transition:border-color .2s,background .2s}
+.remote:hover{background:var(--surface-hover)}
+.remote i{width:12px;height:12px;border-radius:50%;background:var(--text-faint);flex:none}
+.remote.ok{border-color:rgba(61,220,151,.45)} .remote.ok i{background:var(--ok);box-shadow:0 0 10px var(--ok)}
+.remote.busy i{background:var(--brand)} .remote.bad i{background:var(--danger)}
+.remote b{display:block;font-size:15px} .remote small{display:block;color:var(--text-faint);font-size:12.5px;margin-top:2px;font-family:var(--mono)}
+.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.warn{display:none;margin-top:12px;padding:12px 16px;border-radius:14px;border:1px solid rgba(255,92,108,.45);background:rgba(255,92,108,.08);font-size:14.5px;line-height:1.5}
+.warn.show{display:block}
+
+.bar{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;align-items:center}
+.bar .seg{flex:1 1 320px}
+.bandbtn{display:flex;align-items:center;gap:12px;border:1px solid var(--border-strong);background:var(--surface);border-radius:14px;padding:8px 16px 8px 12px;cursor:pointer;min-height:52px;text-align:left;flex:0 1 240px}
+.bandbtn b{display:block;font-size:15px} .bandbtn small{display:block;font-family:var(--mono);font-size:12px;color:var(--text-faint)}
+.bandbtn[aria-pressed=true]{border-color:var(--brand)} .bandbtn[aria-pressed=true] b{color:var(--brand)}
+.beat{width:16px;height:16px;border-radius:50%;background:var(--border-strong);flex:none}
+.bandbtn[aria-pressed=true] .beat{background:var(--brand-soft);box-shadow:inset 0 0 0 2px var(--brand)}
+.beat.hit{animation:beat .2s ease-out} .beat.hit.down{animation:beatd .26s ease-out}
+@keyframes beat{0%{background:var(--brand);transform:scale(1.2)}100%{transform:none}}
+@keyframes beatd{0%{background:#fff;transform:scale(1.35)}100%{transform:none}}
+
+.stage{display:grid;grid-template-columns:200px 1fr;gap:14px;margin-top:14px}
+.side{padding:14px;display:flex;flex-direction:column;gap:8px}
+.zone{flex:1;min-height:70px;border-radius:14px;border:1px solid var(--border);background:var(--bg-elev);display:flex;flex-direction:column;justify-content:center;padding:8px 12px;cursor:pointer;user-select:none;transition:all .12s}
+.zone b{font-size:14px} .zone small{font-family:var(--mono);font-size:11.5px;color:var(--text-faint);margin-top:2px}
+.zone.on{border-color:var(--brand);background:var(--brand-soft)} .zone.on b{color:var(--brand)}
+.posbox{margin-top:4px;padding:10px 12px;border-radius:14px;background:var(--bg-elev);border:1px solid var(--border)}
+.posbox .eyebrow{font-size:10.5px}
+.posneck{display:flex;gap:3px;margin-top:8px}
+.posneck i{flex:1;height:8px;border-radius:3px;background:var(--border-strong)}
+.posneck i.on{background:var(--brand)}
+.posbox b{font-family:var(--mono);font-size:14px}
+.main{padding:18px;display:flex;flex-direction:column;gap:14px;position:relative;overflow:hidden}
+.now{display:flex;align-items:center;gap:18px}
+.chord{font-size:clamp(4rem,11vw,7.4rem);font-weight:850;letter-spacing:-.05em;line-height:.88;min-width:2ch;transition:color .1s,text-shadow .1s}
+.chord.muted{color:var(--text-faint)}
+.chord.flash{color:var(--brand);text-shadow:0 0 34px var(--brand-line)}
+.diagram{width:110px;height:130px;flex:none}
+.strokeinfo{margin-left:auto;text-align:right}
+.arrow{font-size:2.8rem;line-height:1;color:var(--border-strong);transition:color .3s}
+.arrow.hit{color:var(--brand);transition:none}
+.strokeinfo small{display:block;font-family:var(--mono);font-size:12px;color:var(--text-faint);margin-top:4px}
+.neck{position:relative;height:150px;border-radius:16px;background:linear-gradient(180deg,#2a2016,#1b1510 60%,#16120e);border:1px solid var(--border);overflow:hidden;touch-action:none;cursor:grab;user-select:none}
+.neck .fret{position:absolute;top:0;bottom:0;width:3px;background:#b9b2a6;opacity:.3}
+.neck .str{position:absolute;left:0;right:0;background:linear-gradient(180deg,#f2ede4,#a59d8f);border-radius:2px;box-shadow:0 1px 2px rgba(0,0,0,.5)}
+.neck .str.off{opacity:.2}
+.neck .str.ring{animation:ring .5s ease-out}
+.neck .str.ring::after{content:"";position:absolute;inset:-3px 0;background:var(--brand);opacity:0;animation:glow .5s ease-out}
+@keyframes ring{0%{transform:none}8%{transform:translateY(-3px)}18%{transform:translateY(2.5px)}32%{transform:translateY(-1.5px)}50%{transform:translateY(1px)}100%{transform:none}}
+@keyframes glow{0%{opacity:.6}100%{opacity:0}}
+.neck__hint{position:absolute;right:12px;bottom:8px;font-size:12px;color:rgba(243,241,234,.45);pointer-events:none}
+.pads{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.pad{border-radius:16px;border:1px solid var(--border-strong);background:var(--bg-elev);padding:14px 10px;text-align:center;cursor:pointer;user-select:none;touch-action:none;transition:all .08s}
+.pad .n{font-family:var(--mono);font-size:11.5px;color:var(--text-faint)}
+.pad .c{font-size:1.7rem;font-weight:800;margin-top:2px;letter-spacing:-.02em}
+.pad.on{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.pad.on .n{color:var(--brand-ink);opacity:.6}
+@media (max-width:820px){
+  .stage{grid-template-columns:1fr}
+  .side{flex-direction:row;flex-wrap:wrap}
+  .side > .eyebrow{flex-basis:100%}
+  .zone{min-height:54px;flex:1 1 28%;padding:8px 10px}
+  .zone small{font-size:10.5px}
+  .bandbtn{flex:1 1 100%}
+  .remote{flex:1 1 100%}
+  .tools{flex:1 1 100%} .tools .btn{flex:1}
+  .posbox{flex:1 1 100%}
+  .diagram{width:84px;height:100px}
+  .now{gap:12px} .arrow{font-size:2.1rem}
+}
+
+/* record */
+.rec{display:flex;align-items:center;gap:16px;padding:16px 18px;margin-top:14px;flex-wrap:wrap}
+.recbtn{width:64px;height:64px;border-radius:50%;border:3px solid var(--border-strong);background:transparent;cursor:pointer;display:grid;place-items:center;flex:none}
+.recbtn i{width:26px;height:26px;border-radius:50%;background:var(--danger);transition:all .2s}
+.recbtn[aria-pressed=true]{border-color:var(--danger)}
+.recbtn[aria-pressed=true] i{border-radius:6px;width:22px;height:22px;animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.55}}
+.rec__time{font-family:var(--mono);font-size:1.6rem;font-weight:700;min-width:4ch}
+.rec__txt{flex:1;min-width:200px}
+.rec__txt b{display:block} .rec__txt span{color:var(--text-dim);font-size:14.5px}
+
+/* sheets (dialogs) */
+dialog{border:1px solid var(--border-strong);background:var(--bg-elev);color:var(--text);border-radius:24px;padding:0;width:min(640px,calc(100vw - 24px));max-height:calc(100dvh - 24px);box-shadow:0 30px 90px rgba(0,0,0,.6)}
+dialog::backdrop{background:rgba(5,6,9,.72);backdrop-filter:blur(4px)}
+.sheet{padding:clamp(20px,4vw,30px);display:flex;flex-direction:column;gap:16px}
+.sheet h2{margin:0;font-size:26px;font-weight:800;letter-spacing:-.02em}
+.sheet__x{position:absolute;right:14px;top:14px;width:40px;height:40px;border-radius:12px;border:1px solid var(--border);background:var(--surface);cursor:pointer;font-size:18px}
+.choice{display:grid;gap:10px}
+.opt{display:grid;grid-template-columns:44px 1fr auto;gap:14px;align-items:center;padding:14px;border-radius:16px;border:1px solid var(--border);background:var(--surface);cursor:pointer;text-align:left;width:100%}
+.opt[aria-pressed=true]{border-color:var(--c);background:color-mix(in srgb,var(--c) 10%,transparent)}
+.opt__ic{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-weight:800;background:color-mix(in srgb,var(--c) 18%,transparent);color:var(--c)}
+.opt b{display:block;font-size:16px} .opt span{color:var(--text-dim);font-size:14px}
+.listen{width:44px;height:44px;border-radius:50%;border:1px solid var(--border-strong);background:transparent;cursor:pointer;display:grid;place-items:center}
+.listen svg{width:16px;height:16px} .listen.on{background:var(--text);color:#000}
+.steps{display:flex;flex-direction:column;gap:8px;font-size:14.5px}
+.steps div{display:flex;gap:10px;align-items:center;color:var(--text-faint)}
+.steps div.now{color:var(--text)} .steps div.done{color:var(--ok)}
+.steps div::before{content:"";width:10px;height:10px;border-radius:50%;background:currentColor;flex:none}
+.steps div.now::before{animation:pulse 1s infinite}
+.lyrics{white-space:pre-wrap;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;font-size:14.5px;line-height:1.6;max-height:180px;overflow:auto;color:var(--text-dim)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:520px){.row2{grid-template-columns:1fr}}
+.done{text-align:center;align-items:center}
+.done .big{font-size:56px}
+/* setup */
+.wz__bar{height:6px;border-radius:4px;background:var(--surface-hover);overflow:hidden}
+.wz__bar div{height:100%;width:0;background:var(--brand);transition:width .1s linear}
+.wz__step{font-size:20px;font-weight:700;line-height:1.35}
+.wz__dots{display:flex;gap:6px}
+.wz__dots i{flex:1;height:4px;border-radius:2px;background:var(--surface-hover)}
+.wz__dots i.on{background:var(--brand)}
+/* settings */
+.set{display:flex;flex-direction:column}
+.set__row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 0;border-top:1px solid var(--border)}
+.set__row label{color:var(--text-dim);font-size:14.5px}
+.set__row .ctl{display:flex;gap:8px;align-items:center}
+.set__row output{font-family:var(--mono);font-size:12.5px;color:var(--text-faint);min-width:56px;text-align:right}
+.set__row select{background:var(--bg);border:1px solid var(--border-strong);border-radius:10px;padding:8px;min-height:40px}
+.set h3{margin:16px 0 4px;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint)}
+.map{width:100%;border-spacing:6px}
+.map th{font-size:11.5px;font-weight:600;color:var(--text-faint);text-align:left}
+.map select{width:100%}
+.keys{color:var(--text-faint);font-size:13.5px;line-height:1.9;margin-top:16px}
+kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--border-strong);border-bottom-width:2px;border-radius:6px;padding:1px 6px;color:var(--text-dim);background:var(--surface)}
+</style>
+</head>
+<body data-voice="acoustic">
+<div data-nav></div>
+<main class="wrap app">
+  <div class="top">
+    <button class="remote" id="btn-fret"><i></i><span><b>Fret remote</b><small id="txt-fret">left hand · tap to connect</small></span></button>
+    <button class="remote" id="btn-strum"><i></i><span><b>Strum remote</b><small id="txt-strum">right hand · tap to connect</small></span></button>
+    <div class="tools">
+      <button class="btn btn--line" id="btnSetup">Set up</button>
+      <button class="btn btn--ghost" id="btnSettings" aria-label="Settings">⚙ Settings</button>
+    </div>
+  </div>
+  <div class="warn" id="warnBt">This browser can't talk to Bluetooth. Open AirKords in <b>Chrome</b> on a laptop or Android phone (iPhones don't support it yet). You can still play by dragging across the strings or with the keyboard.</div>
+
+  <div class="bar">
+    <div class="seg" id="voiceSeg" role="group" aria-label="Sound">
+      <button data-v="acoustic" aria-pressed="true">Acoustic</button><button data-v="rock" aria-pressed="false">Rock</button><button data-v="metal" aria-pressed="false">Heavy Metal</button>
+    </div>
+    <button class="bandbtn" id="btnBand" aria-pressed="false"><span class="beat" id="beat"></span><span><b>AI Band</b><small id="bandTxt">off · tap to jam</small></span></button>
+  </div>
+
+  <div class="stage">
+    <div class="card side">
+      <div class="eyebrow" style="font-size:10.5px">Neck tilt</div>
+      <div class="zone" data-zone="up"><b>Up</b><small id="z-up"></small></div>
+      <div class="zone on" data-zone="level"><b>Level</b><small id="z-level"></small></div>
+      <div class="zone" data-zone="down"><b>Down</b><small id="z-down"></small></div>
+      <div class="posbox"><div class="eyebrow">Neck position</div><div class="posneck" id="posNeck"></div><b id="posTxt">Open</b></div>
+    </div>
+    <div class="card main">
+      <div class="now">
+        <div class="chord muted" id="chord">–</div>
+        <svg class="diagram" id="diagram" viewBox="0 0 110 130" aria-hidden="true"></svg>
+        <div class="strokeinfo"><div class="arrow" id="arrow">↕</div><small id="strokeTxt">strum to play</small></div>
+      </div>
+      <div class="neck" id="neck" aria-label="Strings — drag across to play"><span class="neck__hint">drag across the strings</span></div>
+      <div class="pads" id="pads">
+        <div class="pad" data-pad="0"><div class="n">PAD 1</div><div class="c">G</div></div>
+        <div class="pad" data-pad="1"><div class="n">PAD 2</div><div class="c">C</div></div>
+        <div class="pad" data-pad="2"><div class="n">PAD 3</div><div class="c">D</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card rec" id="record">
+    <button class="recbtn" id="btnRec" aria-pressed="false" aria-label="Record"><i></i></button>
+    <div class="rec__time" id="recTime">0:00</div>
+    <div class="rec__txt"><b id="recTitle">Record a song</b><span id="recSub">Press record, play, then press stop. Up to 3 minutes.</span></div>
+  </div>
+
+  <div class="keys">No remotes? Hold <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> for pads, <kbd>↑</kbd> <kbd>↓</kbd> to tilt, <kbd>←</kbd> <kbd>→</kbd> to slide along the neck,
+    <kbd>Space</kbd> strum down, <kbd>U</kbd> strum up, <kbd>F</kbd> small flick. <kbd>V</kbd> changes sound, <kbd>B</kbd> AI band, <kbd>R</kbd> record.</div>
+</main>
+<div data-foot></div>
+
+<!-- publish -->
+<dialog id="dlgPub"><div class="sheet" style="position:relative">
+  <button class="sheet__x" data-close aria-label="Close">✕</button>
+  <div id="pubChoose">
+    <div class="eyebrow eyebrow--brand">Your recording · <span id="pubLen"></span></div>
+    <h2 style="margin-top:6px">How should it go out?</h2>
+    <div class="choice" style="margin-top:16px">
+      <div class="opt" role="button" tabindex="0" data-mode="rough" aria-pressed="false" style="--c:#c9c5bb"><div class="opt__ic">1</div><div><b>Rough</b><span>Exactly as you played it.</span></div><button class="listen" data-listen="rough" aria-label="Listen to rough"></button></div>
+      <div class="opt" role="button" tabindex="0" data-mode="enhanced" aria-pressed="true" style="--c:var(--enhance)"><div class="opt__ic">2</div><div><b>Enhanced</b><span>Tighter timing, even volume, studio sound.</span></div><button class="listen" data-listen="enhanced" aria-label="Listen to enhanced"></button></div>
+      <div class="opt" role="button" tabindex="0" data-mode="song" aria-pressed="false" style="--c:var(--ai)"><div class="opt__ic">3</div><div><b>AI song</b><span>Your guitar + AI singer, drums and bass.</span></div><span></span></div>
+    </div>
+    <div id="aiBox" style="display:none;margin-top:14px" class="field">
+      <label for="theme">What's your song about? (optional)</label>
+      <input class="input" id="theme" maxlength="100" placeholder="e.g. riding my bike to the beach">
+      <button class="btn btn--ai" id="btnMake" style="margin-top:10px">✦ Make my AI song</button>
+      <div class="steps" id="aiSteps" style="margin-top:10px"></div>
+      <div id="aiResult" style="display:none;margin-top:6px">
+        <div style="display:flex;align-items:center;gap:10px"><button class="listen" data-listen="song" aria-label="Listen to AI song"></button><b>Your AI song is ready</b></div>
+        <div class="lyrics" id="lyrics" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div class="row2" style="margin-top:18px">
+      <div class="field"><label for="nick">Nickname (shown on the charts)</label><input class="input" id="nick" maxlength="20" placeholder="e.g. Laksh" autocomplete="nickname"></div>
+      <div class="field"><label for="title">Song title</label><input class="input" id="title" maxlength="40" placeholder="My first jam"></div>
+    </div>
+    <p class="faint" style="font-size:13px;margin:10px 0 0">Only your nickname is shown — no real names, please.</p>
+    <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap"><button class="btn btn--brand btn--lg" id="btnPublish">Publish to the charts</button><button class="btn btn--line btn--lg" data-close>Not now</button></div>
+  </div>
+  <div id="pubDone" class="sheet done" style="display:none;padding:10px 0 0">
+    <div class="big">🎸</div><h2>It's on the charts!</h2>
+    <p class="dim" style="margin:0">Share your song with this link:</p>
+    <div style="display:flex;gap:8px;width:100%"><input class="input" id="shareUrl" readonly><button class="btn btn--line" id="btnCopy">Copy</button></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center"><a class="btn btn--brand" id="lnkSong" href="/songs">Open my song</a><button class="btn btn--line" data-close>Play again</button></div>
+  </div>
+</div></dialog>
+
+<!-- setup -->
+<dialog id="dlgSetup"><div class="sheet" style="position:relative">
+  <button class="sheet__x" data-close aria-label="Close">✕</button>
+  <div class="eyebrow eyebrow--brand">Set up · about 10 seconds</div>
+  <h2>Let's learn how you hold them.</h2>
+  <div class="wz__dots" id="wzDots"></div>
+  <div class="wz__step" id="wzStep">Connect at least one remote first.</div>
+  <div class="wz__bar"><div id="wzBar"></div></div>
+  <div style="display:flex;gap:10px"><button class="btn btn--brand" id="btnWz">Start</button><button class="btn btn--line" id="btnLevel">Just set "level" now</button></div>
+</div></dialog>
+
+<!-- settings -->
+<dialog id="dlgSettings"><div class="sheet" style="position:relative">
+  <button class="sheet__x" data-close aria-label="Close">✕</button>
+  <h2>Settings</h2>
+  <div class="set" id="settings"></div>
+</div></dialog>
+
+<script type="module" src="/js/ui/play.js"></script>
+</body>
+</html>

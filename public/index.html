@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AirKords — a guitar you play in the air</title>
+<meta name="description" content="Two motion remotes, one real-sounding guitar. Strum the air, slide along the neck, record songs, and share them on the AirKords charts.">
+<meta name="theme-color" content="#0b0d12">
+<meta property="og:title" content="AirKords — a guitar you play in the air">
+<meta property="og:description" content="Two motion remotes. Real guitar strings. Strum the air, make a song, top the charts.">
+<meta property="og:image" content="/media/device-hero.jpg">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+<style>
+/* ---------- hero ---------- */
+.hero{padding:clamp(28px,6vw,72px) 0 clamp(56px,8vw,96px)}
+.hero__in{display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(24px,5vw,64px);align-items:center}
+.hero__sub{color:var(--text-dim);font-size:clamp(1.02rem,1.7vw,1.18rem);line-height:1.55;max-width:520px;margin:22px 0 0}
+.hero__cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px}
+.hero__proof{margin-top:26px;color:var(--text-faint);font-size:14px;line-height:1.7}
+.hero__proof a{color:var(--text-dim);text-decoration:underline;text-underline-offset:3px}
+.hero__media{position:relative}
+.hero__photo{border-radius:var(--radius-xl);overflow:hidden;aspect-ratio:7/5;background:radial-gradient(120% 90% at 70% 30%,#2b2112 0%,#14130f 55%,#0e0f12 100%);border:1px solid var(--border);box-shadow:0 30px 80px -30px rgba(245,165,36,.35)}
+.hero__photo img{width:100%;height:100%;object-fit:cover}
+.hero__photo.noimg::after{content:"AirKords prototype";position:absolute;inset:0;display:grid;place-items:center;color:var(--text-faint);font-weight:700}
+.hero__scale{position:absolute;left:18px;bottom:-14px;background:var(--bg-elev-2);border:1px solid var(--border-strong);border-radius:999px;padding:8px 14px;font-size:12.5px;font-weight:650;letter-spacing:.04em;color:var(--text-dim)}
+.hero__wave{position:absolute;right:-6px;top:-18px;width:120px;opacity:.9}
+@media (max-width:900px){.hero__in{grid-template-columns:1fr}.hero__media{order:-1;max-width:640px;margin-bottom:22px}}
+
+/* ---------- try it ---------- */
+.try{padding:clamp(20px,3vw,28px);display:grid;gap:18px}
+.try__top{display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--border-strong);background:transparent;border-radius:999px;padding:9px 16px;font-weight:750;cursor:pointer;min-height:42px;min-width:56px}
+.chip[aria-pressed=true]{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.neck{position:relative;height:clamp(190px,26vw,240px);border-radius:var(--radius-lg);background:linear-gradient(180deg,#2a2016,#1b1510 60%,#16120e);border:1px solid var(--border);overflow:hidden;touch-action:none;cursor:grab;user-select:none}
+.neck:active{cursor:grabbing}
+.neck .fret{position:absolute;top:0;bottom:0;width:3px;background:linear-gradient(180deg,#b9b2a6,#7d776d);opacity:.35}
+.neck .inlay{position:absolute;width:12px;height:12px;border-radius:50%;background:#e9dcc4;opacity:.18;top:50%;transform:translate(-50%,-50%)}
+.neck .str{position:absolute;left:0;right:0;background:linear-gradient(180deg,#f2ede4,#a59d8f);border-radius:2px;transform-origin:center;box-shadow:0 1px 2px rgba(0,0,0,.5)}
+.neck .str.ring{animation:ring .55s ease-out}
+.neck .str.off{opacity:.25}
+@keyframes ring{0%{transform:translateY(0)}8%{transform:translateY(-3.5px)}18%{transform:translateY(3px)}30%{transform:translateY(-2px)}45%{transform:translateY(1.5px)}65%{transform:translateY(-.6px)}100%{transform:none}}
+.neck__hint{position:absolute;right:14px;bottom:10px;font-size:12.5px;color:rgba(243,241,234,.5);font-weight:600;pointer-events:none}
+.neck__name{position:absolute;left:16px;top:10px;font-size:13px;font-family:var(--mono);color:rgba(243,241,234,.55);pointer-events:none}
+.pick{position:absolute;width:22px;height:26px;border-radius:50% 50% 50% 50% / 40% 40% 60% 60%;background:var(--brand);pointer-events:none;opacity:0;transform:translate(-50%,-50%) rotate(-12deg);box-shadow:0 4px 14px rgba(0,0,0,.5);transition:opacity .15s}
+
+/* ---------- do cards ---------- */
+.do-card{padding:28px 26px 24px;display:flex;flex-direction:column;gap:10px;transition:background .2s,transform .3s var(--ease);min-height:210px}
+.do-card:hover{background:var(--surface-hover);transform:translateY(-2px)}
+.do-card h3{margin:0;font-size:24px;font-weight:800;letter-spacing:-.02em}
+.do-card p{margin:0;color:var(--text-dim);line-height:1.5;flex:1}
+.do-card .go{font-weight:650}
+
+/* ---------- hands ---------- */
+.hand{padding:clamp(22px,3vw,32px);display:flex;flex-direction:column;gap:18px}
+.hand__head{display:flex;gap:16px;align-items:center}
+.hand__art{width:96px;height:96px;flex:none;border-radius:20px;background:var(--bg-elev);border:1px solid var(--border);display:grid;place-items:center}
+.hand h3{margin:4px 0 0;font-size:24px;font-weight:800;letter-spacing:-.02em}
+.moves{display:flex;flex-direction:column;gap:2px}
+.move{display:grid;grid-template-columns:44px 1fr;gap:14px;align-items:center;padding:12px 0;border-top:1px solid var(--border)}
+.move__ic{width:44px;height:44px;border-radius:12px;background:var(--brand-soft);color:var(--brand);display:grid;place-items:center}
+.move__ic svg{width:22px;height:22px}
+.move b{display:block;font-size:16px}
+.move span{color:var(--text-dim);font-size:14.5px}
+
+/* ---------- voices ---------- */
+.voice{padding:26px;display:flex;flex-direction:column;gap:12px;position:relative;overflow:hidden;min-height:250px}
+.voice::before{content:"";position:absolute;inset:auto -30% -55% auto;width:260px;height:260px;border-radius:50%;background:var(--c);opacity:.13;filter:blur(30px)}
+.voice h3{margin:0;font-size:26px;font-weight:850;letter-spacing:-.03em}
+.voice p{margin:0;color:var(--text-dim);flex:1}
+.voice .btn{align-self:flex-start;border-color:color-mix(in srgb,var(--c) 45%,transparent)}
+.voice .btn.on{background:var(--c);color:#14100a}
+.eq{display:flex;gap:3px;align-items:flex-end;height:22px}
+.eq i{width:4px;background:var(--c);border-radius:2px;height:30%;opacity:.5}
+.voice.playing .eq i{animation:eq .5s ease-in-out infinite alternate;opacity:1}
+.eq i:nth-child(2){animation-delay:.15s}.eq i:nth-child(3){animation-delay:.3s}.eq i:nth-child(4){animation-delay:.08s}.eq i:nth-child(5){animation-delay:.22s}
+@keyframes eq{from{height:20%}to{height:100%}}
+
+/* ---------- modes ---------- */
+.mode{padding:26px;display:flex;flex-direction:column;gap:10px}
+.mode h3{margin:0;font-size:22px;font-weight:800;letter-spacing:-.02em}
+.mode p{margin:0;color:var(--text-dim);line-height:1.55}
+.mode__n{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-weight:800;font-size:17px}
+
+/* ---------- steps ---------- */
+.step{padding:24px 22px;display:flex;flex-direction:column;gap:10px}
+.step__n{width:40px;height:40px;border-radius:12px;background:var(--brand-soft);color:var(--brand-bright);display:grid;place-items:center;font-weight:800;font-size:18px}
+.step h3{margin:4px 0 0;font-size:19px;font-weight:750}
+.step p{margin:0;color:var(--text-dim);font-size:15px;line-height:1.5}
+
+/* ---------- specs ---------- */
+.specs{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden}
+.spec{padding:20px 18px;border-right:1px solid var(--border)}
+.spec:last-child{border-right:0}
+.spec .eyebrow{font-size:11px}
+.spec b{display:block;margin-top:6px;font-size:16px;font-weight:700}
+@media (max-width:860px){.specs{grid-template-columns:1fr 1fr}.spec{border-bottom:1px solid var(--border)}.spec:nth-child(2n){border-right:0}}
+
+/* ---------- log ---------- */
+.log{display:grid;gap:16px;margin-top:36px}
+.entry{display:grid;grid-template-columns:150px 1fr;gap:24px;padding:24px;align-items:start}
+.entry__date{font-family:var(--mono);font-size:13px;color:var(--brand);font-weight:700;padding-top:4px}
+.entry h3{margin:0;font-size:20px;font-weight:750}
+.entry p{margin:8px 0 0;color:var(--text-dim);line-height:1.55}
+.entry__img{margin-top:16px;border-radius:14px;overflow:hidden;max-width:520px;aspect-ratio:4/3;background:var(--bg-elev)}
+.entry__img img{width:100%;height:100%;object-fit:cover;object-position:center 25%}
+.entry__src{display:inline-block;margin-top:12px;font-size:13px;color:var(--text-faint)}
+.entry__src a{color:var(--brand);text-decoration:underline;text-underline-offset:3px}
+.status{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.status ul{margin:12px 0 0;padding-left:18px;color:var(--text-dim);line-height:1.8}
+@media (max-width:700px){.entry{grid-template-columns:1fr;gap:6px}.status{grid-template-columns:1fr}}
+
+/* ---------- story ---------- */
+.story{display:grid;grid-template-columns:180px 1fr;gap:clamp(20px,4vw,48px);align-items:start;padding:clamp(24px,4vw,44px)}
+.story__pic{width:180px;height:180px;border-radius:50%;overflow:hidden;border:3px solid var(--brand-line);background:var(--bg-elev)}
+.story__pic img{width:100%;height:100%;object-fit:cover}
+.story h2{margin:8px 0 0}
+.story p{color:var(--text-dim);font-size:1.08rem;line-height:1.6;max-width:640px}
+.stats{display:flex;gap:28px;flex-wrap:wrap;margin-top:18px}
+.stats b{display:block;font-size:1.25rem;font-weight:800}
+.stats span{color:var(--text-faint);font-size:12.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+@media (max-width:700px){.story{grid-template-columns:1fr}.story__pic{width:120px;height:120px}}
+
+.final{text-align:center;padding:clamp(72px,10vw,120px) 0}
+.final .hero__cta{justify-content:center}
+.charts-head{display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap;margin-bottom:24px}
+</style>
+</head>
+<body>
+<div data-nav></div>
+
+<main>
+  <!-- HERO -->
+  <section class="hero">
+    <div class="wrap hero__in">
+      <div class="hero__copy reveal">
+        <div class="eyebrow">Two remotes. One guitar in the air.</div>
+        <h1 class="h-display"><span>Strum.</span><span>Slide.</span><span class="accent">Rock.</span></h1>
+        <p class="hero__sub">AirKords turns two small motion remotes into a guitar. One hand picks the chord, the other strums the air — and real recorded guitar strings ring out.</p>
+        <div class="hero__cta">
+          <a class="btn btn--brand btn--lg" href="/play">Start playing</a>
+          <a class="btn btn--line btn--lg" href="/songs">Hear the songs →</a>
+        </div>
+        <div class="hero__proof">Built on ESP32-C6 · Real guitar strings · Songs you can share<br><a href="#story">Built by Laksh, age 8 →</a></div>
+      </div>
+      <div class="hero__media reveal">
+        <div class="hero__photo"><img src="/media/device-hero.jpg" alt="The real AirKords prototype, a small handheld motion controller, held up in a hand" width="1400" height="799" fetchpriority="high"></div>
+        <div class="hero__scale">Actual size — fits in your hand</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TRY IT -->
+  <section class="band band--alt" id="try">
+    <div class="wrap">
+      <div class="reveal">
+        <div class="eyebrow eyebrow--brand">Try it right here</div>
+        <h2 class="section-h">Drag across the strings.</h2>
+        <p class="section-sub">This is the real AirKords sound. Pick a chord, then drag across the strings: slowly for one string at a time, fast for a full strum. With the remotes, your hand in the air does the same thing.</p>
+      </div>
+      <div class="card try reveal" style="margin-top:28px">
+        <div class="try__top">
+          <div class="chips" id="tryChords" role="group" aria-label="Chord"></div>
+          <div class="seg" id="tryVoice" role="group" aria-label="Sound" style="min-width:min(100%,330px)">
+            <button aria-pressed="true" data-v="acoustic">Acoustic</button><button aria-pressed="false" data-v="rock">Rock</button><button aria-pressed="false" data-v="metal">Metal</button>
+          </div>
+        </div>
+        <div class="neck" id="neck" aria-label="Guitar strings — drag across to play">
+          <div class="neck__name" id="neckName">G</div>
+          <div class="pick" id="pick"></div>
+          <div class="neck__hint">↕ drag across the strings</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHAT TO DO -->
+  <section class="band">
+    <div class="wrap">
+      <h2 class="section-h reveal">What do you want to do?</h2>
+      <div class="grid-3" style="margin-top:32px">
+        <a class="card do-card reveal" href="/play"><div class="kicker" style="color:var(--rock)">Play</div><h3>Play guitar</h3><p>Connect your two remotes and play — nine chords, three sounds, and an AI band that follows your beat.</p><span class="go" style="color:var(--rock)">Start →</span></a>
+        <a class="card do-card reveal" href="/play#record"><div class="kicker" style="color:var(--ai)">Create</div><h3>Make a song</h3><p>Record a jam and publish it rough, enhanced, or as a full song with an AI singer, drums and bass.</p><span class="go" style="color:var(--ai)">Record →</span></a>
+        <a class="card do-card reveal" href="/songs"><div class="kicker" style="color:var(--enhance)">Listen</div><h3>The charts</h3><p>Hear what other players made, like your favourites, and climb the leaderboard with your own.</p><span class="go" style="color:var(--enhance)">Listen →</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW YOU PLAY -->
+  <section class="band band--alt" id="how">
+    <div class="wrap">
+      <div class="reveal">
+        <div class="eyebrow eyebrow--brand">How you play</div>
+        <h2 class="section-h">Two hands, like a real guitar.</h2>
+        <p class="section-sub">Your left hand works the neck, your right hand strums. Every move is something a real guitarist does.</p>
+      </div>
+      <div class="grid-2" style="margin-top:32px">
+        <div class="card hand reveal">
+          <div class="hand__head">
+            <div class="hand__art"><svg viewBox="0 0 96 96" width="80" height="80" fill="none"><rect x="14" y="36" width="68" height="24" rx="12" fill="#191d27" stroke="#f5a524" stroke-width="2"/><rect x="26" y="42" width="12" height="12" rx="3" fill="#f5a524"/><rect x="42" y="42" width="12" height="12" rx="3" fill="#f5a524" opacity=".55"/><rect x="58" y="42" width="12" height="12" rx="3" fill="#f5a524" opacity=".3"/><path d="M48 14v14M42 20l6-6 6 6M48 82V68M42 76l6 6 6-6" stroke="#f3f1ea" stroke-opacity=".55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 48h6M86 48h6" stroke="#f3f1ea" stroke-opacity=".55" stroke-width="2" stroke-linecap="round"/></svg></div>
+            <div><div class="kicker" style="color:var(--brand)">Left hand</div><h3>The fret remote</h3></div>
+          </div>
+          <div class="moves">
+            <div class="move"><div class="move__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M7 8l5-5 5 5M7 16l5 5 5-5"/></svg></div><div><b>Tilt front or back</b><span>Changes the chord row — up, level or down.</span></div></div>
+            <div class="move"><div class="move__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M8 7l-5 5 5 5M16 7l5 5-5 5"/></svg></div><div><b>Slide left or right</b><span>Moves up the neck — chords shift and ringing strings glide.</span></div></div>
+            <div class="move"><div class="move__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="5" height="8" rx="1.5"/><rect x="9.5" y="8" width="5" height="8" rx="1.5"/><rect x="16" y="8" width="5" height="8" rx="1.5"/></svg></div><div><b>Touch pads 1, 2, 3</b><span>Pick the chord, like pressing the strings down.</span></div></div>
+          </div>
+        </div>
+        <div class="card hand reveal">
+          <div class="hand__head">
+            <div class="hand__art"><svg viewBox="0 0 96 96" width="80" height="80" fill="none"><rect x="30" y="30" width="36" height="36" rx="12" fill="#191d27" stroke="#ff7a45" stroke-width="2"/><circle cx="48" cy="48" r="6" fill="#ff7a45"/><path d="M16 30c-6 10-6 26 0 36M80 30c6 10 6 26 0 36" stroke="#f3f1ea" stroke-opacity=".55" stroke-width="2" stroke-linecap="round"/><path d="M12 36l4-6 6 3M84 60l-4 6-6-3" stroke="#f3f1ea" stroke-opacity=".55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <div><div class="kicker" style="color:var(--rock)">Right hand</div><h3>The strum remote</h3></div>
+          </div>
+          <div class="moves">
+            <div class="move"><div class="move__ic" style="background:var(--rock-soft);color:var(--rock)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 10h16" opacity=".35"/><path d="M4 14h16M4 18h16"/><path d="M8 4l4 8"/></svg></div><div><b>Small flick</b><span>Plays just one or two strings.</span></div></div>
+            <div class="move"><div class="move__ic" style="background:var(--rock-soft);color:var(--rock)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 5h16M4 9.5h16M4 14h16M4 18.5h16"/><path d="M7 3l10 18"/></svg></div><div><b>Full swing</b><span>All six strings, one after another — like a real pick.</span></div></div>
+            <div class="move"><div class="move__ic" style="background:var(--rock-soft);color:var(--rock)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4v16M4 16l4 4 4-4M16 20V4M12 8l4-4 4 4"/></svg></div><div><b>Down and up</b><span>Down starts on the thick strings, up on the thin ones.</span></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SOUNDS -->
+  <section class="band">
+    <div class="wrap">
+      <div class="reveal">
+        <div class="eyebrow eyebrow--brand">Three sounds</div>
+        <h2 class="section-h">Campfire to heavy metal.</h2>
+        <p class="section-sub">Real recorded guitar strings, played through a wooden body or a guitar amp. Switch any time — even mid-song.</p>
+      </div>
+      <div class="grid-3" style="margin-top:32px">
+        <div class="card voice reveal" style="--c:var(--acoustic)" data-voice="acoustic"><div class="kicker" style="color:var(--acoustic)">Acoustic</div><h3>Warm &amp; bright</h3><p>Steel strings and a wooden body. Perfect for singing along.</p><div class="eq"><i></i><i></i><i></i><i></i><i></i></div><button class="btn btn--line btn--sm">▶ Hear it</button></div>
+        <div class="card voice reveal" style="--c:var(--rock)" data-voice="rock"><div class="kicker" style="color:var(--rock)">Rock</div><h3>Crunchy amp</h3><p>An electric guitar pushing a hot amp. Big, punchy chords.</p><div class="eq"><i></i><i></i><i></i><i></i><i></i></div><button class="btn btn--line btn--sm">▶ Hear it</button></div>
+        <div class="card voice reveal" style="--c:var(--metal)" data-voice="metal"><div class="kicker" style="color:var(--metal)">Heavy Metal</div><h3>High gain</h3><p>Power chords and palm-muted chugs through a wall of speakers.</p><div class="eq"><i></i><i></i><i></i><i></i><i></i></div><button class="btn btn--line btn--sm">▶ Hear it</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- JAM TO SONG -->
+  <section class="band band--alt">
+    <div class="wrap">
+      <div class="reveal">
+        <div class="eyebrow eyebrow--brand">From jam to song</div>
+        <h2 class="section-h">Record it. Then choose.</h2>
+        <p class="section-sub">Hit record, play, and stop. Then pick how your song goes out to the world.</p>
+      </div>
+      <div class="grid-3" style="margin-top:32px">
+        <div class="card mode reveal"><div class="mode__n" style="background:var(--surface-hover);color:var(--text)">1</div><span class="badge badge--rough" style="align-self:flex-start">Rough</span><h3>Exactly as you played</h3><p>Every strum, every slide, every mistake. Straight onto the charts.</p></div>
+        <div class="card mode reveal"><div class="mode__n" style="background:var(--enhance-soft);color:var(--enhance)">2</div><span class="badge badge--enhanced" style="align-self:flex-start">Enhanced</span><h3>Same playing, polished</h3><p>Your strums pulled onto the beat, the volume evened out, and a wide studio sound.</p></div>
+        <div class="card mode reveal"><div class="mode__n" style="background:var(--ai-soft);color:var(--ai)">3</div><span class="badge badge--song" style="align-self:flex-start">AI song</span><h3>A full band around you</h3><p>Your guitar stays exactly as you played it. AI writes lyrics and adds a singer, drums and bass at your tempo.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEPS -->
+  <section class="band">
+    <div class="wrap">
+      <h2 class="section-h reveal">From motion to music in seconds.</h2>
+      <div class="grid-4" style="margin-top:32px">
+        <div class="card step reveal"><div class="step__n">1</div><h3>Connect</h3><p>Pair both remotes in Chrome with one tap each.</p></div>
+        <div class="card step reveal"><div class="step__n">2</div><h3>Set up</h3><p>Hold still, strum, tilt, slide. Eight seconds.</p></div>
+        <div class="card step reveal"><div class="step__n">3</div><h3>Play</h3><p>Turn on the AI band and it plays along at your speed.</p></div>
+        <div class="card step reveal"><div class="step__n">4</div><h3>Share</h3><p>Publish your song and see it on the charts.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CHARTS -->
+  <section class="band band--alt">
+    <div class="wrap">
+      <div class="charts-head reveal">
+        <div><div class="eyebrow eyebrow--brand">The charts</div><h2 class="section-h">Top songs right now.</h2></div>
+        <a class="btn btn--line" href="/songs">See all songs →</a>
+      </div>
+      <div class="rows" id="topSongs"><div class="empty">Loading the charts…</div></div>
+    </div>
+  </section>
+
+  <!-- SPECS -->
+  <section class="band">
+    <div class="wrap">
+      <div class="specs reveal">
+        <div class="spec"><div class="eyebrow">Motion</div><b>6-axis IMU</b></div>
+        <div class="spec"><div class="eyebrow">Link</div><b>Bluetooth LE</b></div>
+        <div class="spec"><div class="eyebrow">Brain</div><b>ESP32-C6</b></div>
+        <div class="spec"><div class="eyebrow">Remotes</div><b>Fret + strum</b></div>
+        <div class="spec"><div class="eyebrow">Sound</div><b>Real recorded strings</b></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BUILD LOG -->
+  <section class="band band--alt" id="build">
+    <div class="wrap">
+      <div class="reveal">
+        <div class="eyebrow eyebrow--brand">Built in the open</div>
+        <h2 class="section-h">What's real right now.</h2>
+        <p class="section-sub">AirKords is a working prototype that's still growing. Here's an honest look at where it is.</p>
+      </div>
+      <div class="status reveal" style="margin-top:28px">
+        <div class="card" style="padding:24px"><span class="badge badge--enhanced"><span class="dot"></span>Working today</span>
+          <ul><li>Motion sensing and strumming in the air</li><li>Real guitar sound in three styles</li><li>The AI band that follows your beat</li><li>Recording and publishing songs</li></ul></div>
+        <div class="card" style="padding:24px"><span class="badge badge--acoustic"><span class="dot"></span>Being built now</span>
+          <ul><li>The two-remote guitar with touch frets</li><li>Six touch strips for full chord shapes</li><li>A 3D-printed body for each remote</li></ul></div>
+      </div>
+      <div class="log">
+        <article class="card entry reveal"><div class="entry__date">Oct 2026</div><div><h3>Two hands</h3><p>AirKords becomes two remotes: a fret remote with a touch slider for chords, and a strum remote for the strumming hand — just like a real guitar.</p></div></article>
+        <article class="card entry reveal"><div class="entry__date">Sep 4, 2026</div><div><h3>First public demo</h3><p>AirKords went in front of a live crowd for the first time, next to an amp at a tech meetup — strumming the air and hearing it through real speakers.</p><div class="entry__img"><img src="/media/log-expo-demo.jpg" alt="Lakshveer demoing the device to a crowd at a tech meetup, with an amplifier on stage" loading="lazy"></div><span class="entry__src">Source: <a href="https://x.com/CaptVenk/status/2096100297395617903" rel="noopener">@CaptVenk on X</a></span></div></article>
+        <article class="card entry reveal"><div class="entry__date">Sep 3, 2026</div><div><h3>First strum, on screen</h3><p>The first on-camera test: motion from the handheld controller driving a guitar on screen in real time, built on an ESP32 and a gyroscope sensor.</p><div class="entry__img"><img src="/media/log-first-test.jpg" alt="Early test of the motion controller reacting to a strumming motion on screen" loading="lazy"></div><span class="entry__src">Source: <a href="https://x.com/CaptVenk/status/2096097583110463637" rel="noopener">@CaptVenk on X</a></span></div></article>
+        <article class="card entry reveal"><div class="entry__date">Sep 3, 2026</div><div><h3>The idea behind the name</h3><p>AirKords started life as AiroMote — a motion controller for games, music and workouts that reads movement from the device itself, not a camera. Guitar became the focus, and the name followed.</p><span class="entry__src">Source: <a href="https://x.com/CaptVenk/status/2095488805121990739" rel="noopener">@CaptVenk on X</a></span></div></article>
+      </div>
+    </div>
+  </section>
+
+  <!-- STORY -->
+  <section class="band" id="story">
+    <div class="wrap">
+      <div class="card story reveal">
+        <div class="story__pic"><img src="/media/builder-portrait.jpg" alt="Lakshveer Rao, age 8, founder of AirKords" loading="lazy"></div>
+        <div>
+          <div class="eyebrow eyebrow--brand">The story</div>
+          <h2 class="section-h">Built by Lakshveer Rao, age 8.</h2>
+          <p>It started with a piano. He asked his father for one — and his father challenged him to build his own way to play music instead. AirKords is that challenge, still in progress.</p>
+          <div class="stats">
+            <div><span>Role</span><b>Co-Founder, Projects by Laksh</b></div>
+            <div><span>Body of work</span><b>200+ projects shipped</b></div>
+          </div>
+          <a class="btn btn--line" style="margin-top:22px" href="https://lakshveer.com/" rel="noopener">See more at lakshveer.com →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="final">
+    <div class="wrap reveal">
+      <h2 class="h-display" style="font-size:clamp(2.6rem,7vw,4.6rem)"><span>Your hands are</span><span class="accent">the guitar.</span></h2>
+      <div class="hero__cta"><a class="btn btn--brand btn--lg" href="/play">Start playing</a><a class="btn btn--line btn--lg" href="/songs">Hear the songs →</a></div>
+    </div>
+  </section>
+</main>
+
+<div data-foot></div>
+<script type="module" src="/js/ui/home.js"></script>
+</body>
+</html>

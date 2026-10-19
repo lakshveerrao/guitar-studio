@@ -1,0 +1,37 @@
+name = "airkords"
+main = "src/worker.js"
+compatibility_date = "2025-09-01"
+
+# serve on airkords.com (if the old site's Worker already owns this domain, remove it there first,
+# or rename this Worker to the old one's name so the deploy simply replaces it)
+routes = [ { pattern = "airkords.com", custom_domain = true } ]
+
+# the website files (homepage, app, song pages, samples)
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "404-page"
+run_worker_first = ["/api/*", "/song/*"]
+
+# song list, likes, plays, reports, AI jobs
+[[d1_databases]]
+binding = "DB"
+database_name = "airkords"
+database_id = "REPLACE_WITH_ID_FROM_wrangler_d1_create"
+
+# recordings (JSON) and AI backing tracks (MP3)
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "airkords-files"
+
+[vars]
+MUSIC_MODEL = "music_v1"
+AI_DAILY_CAP = "40"        # AI songs per day for the whole site (each one costs credits)
+AI_PER_IP = "3"            # AI songs per day per person
+PUBLISH_PER_IP = "30"
+REPORTS_TO_HIDE = "3"      # reports from different people before a song is hidden
+
+# Secrets — set these once, never put them in this file:
+#   npx wrangler secret put ELEVENLABS_API_KEY
+#   npx wrangler secret put ADMIN_TOKEN        (optional, for removing songs)
+#   npx wrangler secret put IP_SALT            (any random text)

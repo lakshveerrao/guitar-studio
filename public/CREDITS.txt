@@ -1,0 +1,2 @@
+Guitar and bass note samples: FluidR3_GM by Frank Wen, via gleitz/midi-js-soundfonts,
+licensed under Creative Commons Attribution 3.0 (https://creativecommons.org/licenses/by/3.0/).

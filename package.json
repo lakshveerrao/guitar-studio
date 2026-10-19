@@ -1,0 +1,25 @@
+{
+  "name": "airkords",
+  "version": "1.0.0",
+  "description": "",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "dev": "node dev/local.mjs",
+    "test": "node test/motion.test.mjs && node test/perf.test.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {},
+  "type": "module",
+  "dependencies": {
+    "@vercel/blob": "^2.8.2",
+    "redis": "^4.7.1"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  }
+}

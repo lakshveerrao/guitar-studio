@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Song — AirKords</title>
+<meta name="description" content="A song played in the air on AirKords.">
+<meta property="og:title" content="A song played in the air — AirKords">
+<meta property="og:description" content="Listen to this song, strummed in the air on AirKords.">
+<meta property="og:image" content="/media/device-hero.jpg">
+<meta name="theme-color" content="#0b0d12">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+<style>
+.song{padding-top:clamp(28px,6vw,64px);padding-bottom:72px}
+.player{display:grid;grid-template-columns:1.1fr .9fr;gap:16px;margin-top:28px}
+@media (max-width:860px){.player{grid-template-columns:1fr}}
+.deck{padding:clamp(20px,3vw,30px);display:flex;flex-direction:column;gap:18px}
+.bigplay{width:84px;height:84px;border-radius:50%;border:0;cursor:pointer;background:var(--brand);color:var(--brand-ink);display:grid;place-items:center;box-shadow:0 14px 40px -14px var(--brand);flex:none}
+.bigplay svg{width:32px;height:32px}
+.deck__top{display:flex;gap:18px;align-items:center}
+.chordnow{font-size:clamp(3rem,8vw,5rem);font-weight:850;letter-spacing:-.05em;line-height:.9;color:var(--text-faint);transition:color .1s}
+.chordnow.flash{color:var(--brand)}
+.prog{height:8px;border-radius:5px;background:var(--surface-hover);overflow:hidden;cursor:pointer}
+.prog div{height:100%;width:0;background:var(--brand);border-radius:5px}
+.times{display:flex;justify-content:space-between;font-family:var(--mono);font-size:13px;color:var(--text-faint)}
+.strings{display:grid;gap:7px;padding:14px;border-radius:16px;background:linear-gradient(180deg,#2a2016,#16120e);border:1px solid var(--border)}
+.strings i{height:3px;border-radius:2px;background:#cfc6bc;opacity:.4;transition:opacity .4s, background .4s}
+.strings i.on{opacity:1;background:var(--brand);transition:none}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+.side{padding:clamp(20px,3vw,26px);display:flex;flex-direction:column;gap:12px}
+.lyrics{white-space:pre-wrap;line-height:1.7;color:var(--text-dim);font-size:15.5px;max-height:420px;overflow:auto}
+.facts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fact{padding:12px 14px;border-radius:14px;background:var(--bg-elev);border:1px solid var(--border)}
+.fact span{display:block;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint)}
+.fact b{display:block;margin-top:4px;font-size:17px}
+.report{background:none;border:0;color:var(--text-faint);font-size:13px;text-decoration:underline;cursor:pointer;align-self:flex-start;padding:6px 0}
+</style>
+</head>
+<body>
+<div data-nav></div>
+<main class="wrap song" id="main">
+  <div class="empty" id="loading">Loading song…</div>
+</main>
+<div data-foot></div>
+<script type="module" src="/js/ui/song.js"></script>
+</body>
+</html>
